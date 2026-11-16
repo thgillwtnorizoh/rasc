@@ -1,4 +1,5 @@
 using Rasc.Core;
+using System.Diagnostics;
 using Xunit;
 
 namespace Rasc.Core.Tests;
@@ -58,4 +59,30 @@ public sealed class MonitorTests
         Assert.Equal(changed, await File.ReadAllTextAsync(path));
         Assert.Single(store.GetRecent(new GcFileSource(path).SourceKey));
     }
+    [Fact]
+    public async Task StoppingMonitorDoesNotWaitForLongPollingInterval()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rasc-stop-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "achievements.txt");
+        await File.WriteAllTextAsync(path, Snapshot(("BASELINE", 42)));
+        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        var source = new GcFileSource(path);
+        var monitor = new AchievementMonitor(source, store, TimeSpan.FromMinutes(5));
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.StatusChanged += (_, status) =>
+        {
+            if (status.Contains("Monitoring", StringComparison.Ordinal))
+                started.TrySetResult(true);
+        };
+        await monitor.StartAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var stopwatch = Stopwatch.StartNew();
+        await monitor.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(4));
+        stopwatch.Stop();
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(3),
+            $"Monitor disposal took {stopwatch.Elapsed} rather than canceling its waiting poll.");
+    }
+
 }

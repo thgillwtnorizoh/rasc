@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Windows.Threading;
 using System.Windows;
 using Microsoft.Win32;
 using Rasc.Core;
@@ -15,6 +16,7 @@ public partial class MainWindow : Window
     private UnlockEventStore? _store;
     private AchievementMonitor? _monitor;
     private bool _canClose;
+    private bool _closing;
 
     public MainWindow()
     {
@@ -22,6 +24,7 @@ public partial class MainWindow : Window
         RecentList.ItemsSource = _history;
         PathBox.Text = LoadLastPath();
         Closing += OnClosing;
+        Closed += (_, _) => ShutdownTrace.Mark("Window.Closed");
     }
 
     private string LoadLastPath()
@@ -94,22 +97,51 @@ public partial class MainWindow : Window
 
     private async void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (_canClose) return;
+        if (_canClose)
+        {
+            ShutdownTrace.Mark("Window.Closing (final)");
+            return;
+        }
+
         e.Cancel = true;
+        if (_closing) return; // coalesce repeated close clicks while shutdown is already running
+        _closing = true;
+        ShutdownTrace.Begin();
+        ShutdownTrace.Mark("Window.Closing (initial)");
+
         try
         {
             if (_monitor is not null)
             {
+                ShutdownTrace.Mark("Monitor.DisposeAsync begin");
                 await _monitor.DisposeAsync();
                 _monitor = null;
+                ShutdownTrace.Mark("Monitor.DisposeAsync complete");
             }
+            else ShutdownTrace.Mark("Monitor already stopped");
+        }
+        catch (Exception ex)
+        {
+            ShutdownTrace.Mark("Monitor stop error: " + ex.GetType().Name);
         }
         finally
         {
-            _store?.Dispose();
-            _store = null;
+            try
+            {
+                ShutdownTrace.Mark("SQLite.Dispose begin");
+                _store?.Dispose();
+                _store = null;
+                ShutdownTrace.Mark("SQLite.Dispose complete");
+            }
+            catch (Exception ex)
+            {
+                ShutdownTrace.Mark("SQLite dispose error: " + ex.GetType().Name);
+            }
+
             _canClose = true;
-            Close();
+            ShutdownTrace.Mark("Final close scheduled");
+            // Avoid re-entering Window.Close during the initial Closing callback.
+            Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.Normal);
         }
     }
 
