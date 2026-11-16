@@ -2,7 +2,7 @@
 
 An independent Windows companion for displaying and browsing virtual Counter-Strike: Global Offensive achievements without representing them as Steam-published achievements.
 
-**Project status:** Research / P000 OPEN. No production implementation authorized by this repository bootstrap.
+**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, awaiting owner runtime qualification and independent QA. P002 visual renderer NOT AUTHORIZED.
 
 ## Scope and provenance
 
@@ -24,7 +24,7 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 
 - **P000:** Steam notification visual and runtime reference investigation. **OPEN**.
   - **P000-C01:** consolidate, independently verify, and publish classic/modern notification reference contracts, their provenance and discrepancies.
-- **P001:** proposed Windows application foundation. **NOT AUTHORIZED**.
+- **P001:** native Windows foundation. **AUTHORIZED / DEVELOPMENT CHECKPOINT** — [Issue #2](https://github.com/thgillwtnorizoh/rasc/issues/2); development tests and Windows build passed, independent QA and owner acceptance pending.
 - **P002:** proposed classic/modern notification renderers. **NOT AUTHORIZED**.
 
 Research and checkpoint records belong under `research/P000/` when verified. Maintain recovery notes in-repository. Do not run old Steam client binaries or interact with the installed Steam client as part of static reference analysis.
@@ -37,3 +37,11 @@ Research and checkpoint records belong under `research/P000/` when verified. Mai
 - [GT-610 community Game Coordinator](https://github.com/GT-610/csgo-gc).
 
 All original-behavior claims must retain exact authority and confidence; do not substitute a visual preview for runtime verification.
+
+## First Windows development artifact
+
+- [P001-C01 guide](docs/P001/README.md) — architecture, build/run instructions and supported profile.
+- [P001-C01 checkpoint](docs/P001/checkpoints/P001-C01.md) — exact tested SHA, Windows CI artifact, testing and limitations.
+- [Windows Actions artifact (self-contained x64)](https://github.com/thgillwtnorizoh/rasc/actions/runs/43888156224/artifacts/14236435399) — development build; no human GUI qualification yet.
+
+The app does not modify your CS:GO files or grant Steam achievements. Select the GT-610 `csgo_gc/achievements.txt` path manually. First observation of existing awards establishes a silent baseline; subsequent observed changes appear in the event history. Original classic/modern Steam popup renderers are not yet implemented.
