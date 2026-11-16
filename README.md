@@ -42,6 +42,8 @@ All original-behavior claims must retain exact authority and confidence; do not 
 
 - [P001-C01 guide](docs/P001/README.md) — architecture, build/run instructions and supported profile.
 - [P001-C01 checkpoint](docs/P001/checkpoints/P001-C01.md) — exact tested SHA, Windows CI artifact, testing and limitations.
-- [Windows Actions artifact (self-contained x64)](https://github.com/thgillwtnorizoh/rasc/actions/runs/43888156224/artifacts/14236435399) — development build; no human GUI qualification yet.
+- [Windows Actions artifact (self-contained x64)](https://github.com/thgillwtnorizoh/rasc/actions/runs/43906938776/artifacts/14246535435) — development build; no human GUI qualification yet.
 
 The app does not modify your CS:GO files or grant Steam achievements. Select the GT-610 `csgo_gc/achievements.txt` path manually. First observation of existing awards establishes a silent baseline; subsequent observed changes appear in the event history. Original classic/modern Steam popup renderers are not yet implemented.
+
+**Latest P001 runtime note:** Owner confirmed six live unlocks, then a restart without duplicate event rows. The first Windows build took approximately five seconds to close on the owner's machine; cause unresolved. The [bounded shutdown instrumented build](https://github.com/thgillwtnorizoh/rasc/actions/runs/43906938776/artifacts/14246535435) adds timing diagnostics at `%LOCALAPPDATA%\\RASC\\last-shutdown.txt`. See [P001-C01-C01 checkpoint](docs/P001/checkpoints/P001-C01-C01.md). No runtime fix is claimed yet.

@@ -4,7 +4,7 @@
 
 ## Quick start (Windows 10/11 x64)
 
-1. Download [Rasc-P001-Windows-x64](https://github.com/thgillwtnorizoh/rasc/actions/runs/43888156224/artifacts/14236435399), extract to a separate folder and launch `Rasc.Desktop.exe`. The artifact is a self-contained .NET 10 build; keep its adjacent files together. Unsigned development build, not a polished installer.
+1. Download [Rasc-P001-Windows-x64](https://github.com/thgillwtnorizoh/rasc/actions/runs/43906938776/artifacts/14246535435), extract to a separate folder and launch `Rasc.Desktop.exe`. The artifact is a self-contained .NET 10 build; keep its adjacent files together. Unsigned development build, not a polished installer.
 2. Browse to the actual GT-610 `csgo_gc/achievements.txt` used by your standalone CS:GO installation. This is a manually selected path; the tool does **not** auto-discover AppID 4465480.
 3. Click **Start monitoring**. The first successfully parsed file is treated as a **silent baseline**, so it does not falsely announce already-earned achievements. After the game writes new awards, their raw IDs appear in the list. The page is an app-owned event history, not the full Steam achievement library.
 4. Click **Stop** before changing paths. The app can be shut down normally; it stops the monitor before closing the SQLite ledger.
@@ -50,3 +50,11 @@ CI runs these commands on `windows-latest` using SDK 10.0.404 and uploads a Wind
 No human-launched GUI testing, no native GT-610 runtime observation, no clean-install qualification, no independent Work 1 QA, no Steam-style toasts or sound, no exact achievement names/icons/catalog, no standalone source auto-discovery, and no portability proof beyond the successful CI self-contained publish.
 
 See [checkpoint](checkpoints/P001-C01.md) for exact tested SHA and [P000 contracts](../../research/P000/comparison/renderer-contract.md) for future renderer requirements.
+
+## P001-D01 — Slow application exit (open discrepancy)
+
+Owner reported approximately **5 seconds** to close the initial Windows build, despite successful live updates and deduplicated restart history. This report does not isolate the delay's cause. The new [instrumented build](https://github.com/thgillwtnorizoh/rasc/actions/runs/43906938776/artifacts/14246535435) changes closing to prevent re-entry and schedules the final WPF Close operation separately. It records phase durations to **`%LOCALAPPDATA%\\RASC\\last-shutdown.txt`** on normal app exit. The log contains only relative millisecond timings and lifecycle phase names; no GC file path, Steam identifiers, achievement IDs or personal data is logged.
+
+To qualify this discrepancy, extract the replacement artifact to a separate folder, start monitoring your existing `achievements.txt`, optionally click Stop before closing, then close RASC. Record wall-clock close time, reopen the app and confirm history remains unchanged. Open `%LOCALAPPDATA%\\RASC\\last-shutdown.txt` to inspect the phases. If closure stalls after `Application.Exit`, this in-process log cannot measure OS-level termination; include that as a limitation. If the process is forcibly killed, the log may not be written at all. **Do not delete the existing `history.db` just to test shutdown.**
+
+Development test added: `StoppingMonitorDoesNotWaitForLongPollingInterval`, using a five-minute poll interval to assert prompt cancellation. This is not a human Windows closing benchmark. See [P001-C01-C01 checkpoint](checkpoints/P001-C01-C01.md).
