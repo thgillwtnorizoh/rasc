@@ -141,7 +141,7 @@ public partial class MainWindow : Window
             _canClose = true;
             ShutdownTrace.Mark("Final close scheduled");
             // Avoid re-entering Window.Close during the initial Closing callback.
-            Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.Normal);
+            _ = Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.Normal);
         }
     }
 
