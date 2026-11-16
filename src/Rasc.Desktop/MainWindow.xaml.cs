@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using Microsoft.Win32;
@@ -13,13 +14,14 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RASC");
     private UnlockEventStore? _store;
     private AchievementMonitor? _monitor;
+    private bool _canClose;
 
     public MainWindow()
     {
         InitializeComponent();
         RecentList.ItemsSource = _history;
         PathBox.Text = LoadLastPath();
-        Closed += OnClosed;
+        Closing += OnClosing;
     }
 
     private string LoadLastPath()
@@ -90,12 +92,25 @@ public partial class MainWindow : Window
         StatusText.Text = "Monitoring stopped.";
     }
 
-    private void OnClosed(object? sender, EventArgs e)
+    private async void OnClosing(object? sender, CancelEventArgs e)
     {
-        // Cancel the monitor first; the OS will close remaining resources on process exit.
-        // The ordinary Stop action awaits graceful shutdown.
-        if (_monitor is not null) _ = _monitor.DisposeAsync();
-        _store?.Dispose();
+        if (_canClose) return;
+        e.Cancel = true;
+        try
+        {
+            if (_monitor is not null)
+            {
+                await _monitor.DisposeAsync();
+                _monitor = null;
+            }
+        }
+        finally
+        {
+            _store?.Dispose();
+            _store = null;
+            _canClose = true;
+            Close();
+        }
     }
 
     private sealed record UnlockRow(string AchievementId, string Observed);
