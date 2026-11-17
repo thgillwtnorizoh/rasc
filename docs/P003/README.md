@@ -62,3 +62,12 @@ Use the **Modern wave fixture** (1, 2, 3, 6) for reproducible stack/queue previe
 Modern changes: correct C02's implausible manually sketched logo with improved mechanical geometry (still not original asset-equivalent), remove blue icon frame, animate diffuse rare gold instead of solid yellow frame, add miniature progress medal left of (current/max). Existing 1/2/3 wave rules, visual preview fixtures and read-only history are preserved.
 
 [Windows CI 44118029224](https://github.com/thgillwtnorizoh/rasc/actions/runs/44118029224) passed 132/132 and native x64 publish at source 43e598ad97a25fb4230349e852016f976f1e725b. [QA assignment #11](https://github.com/thgillwtnorizoh/rasc/issues/11). Physical visibility over **true exclusive fullscreen** remains unsupported/unverified for WPF; borderless fullscreen and mixed-DPI monitors need owner runtime checks.
+
+
+## C03-C01 — Correction superseding C03's mistaken any-window anchoring
+
+C03's normal foreground application positioning was a CONFIRMED OWNER REGRESSION, not an approved feature. [PR #13](https://github.com/thgillwtnorizoh/rasc/pull/13) restores P002/C02 desktop work-area position and size for BOTH profiles in ordinary desktop/windowed/maximized cases. ONLY a focused monitor-covering fullscreen or borderless app moves the anchor to its physical monitor bottom-right. Auto size never follows an ordinary app.
+
+Modern symbol is now the actual recognizable Steam mark geometry (Simple Icons CC0 vector, Valve trademark); its 1/2/3 wave position is unchanged. Rare glow is continuous rotating conic gold with a stationary square halo mask, rather than five orbiting points. Original desktop-toast CSS reuse and screenshot fidelity remain unverified.
+
+[Checkpoint](checkpoints/P003-C03-C01.md), [owner evidence](../../research/P000/modern/owner-c03-c01-correction.md), [Work 1 QA #14](https://github.com/thgillwtnorizoh/rasc/issues/14). [CI 44123158624](https://github.com/thgillwtnorizoh/rasc/actions/runs/44123158624): 133/133, 0 WPF warnings/errors, Windows x64 publish PASS at exact source 8d3132e54a7086db6a72001629309d305c63ff57.

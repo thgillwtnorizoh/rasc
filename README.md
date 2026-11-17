@@ -90,3 +90,13 @@ The owner reported C03 animation **123.3 WPF Rendering callbacks/sec**, longest 
 - Modern removes ordinary blue icon and solid golden rare frames; rare shine remains an approximate animated halo, not the proven original CSS algorithm. Progress cards include the tiny medal before numeric progress. Faint watermark geometry is improved but remains an original-asset-free approximation.
 - [Exact-source Windows CI 44118029224](https://github.com/thgillwtnorizoh/rasc/actions/runs/44118029224): 132/132 tests, zero WPF build warnings/errors, self-contained x64 artifact 14343852367.
 - **Borderless/fullscreen placement is not equivalent to Steam's injected overlay:** true exclusive fullscreen may hide an unrelated WPF HWND. Actual visual/monitor/DPI/focus QA and owner acceptance are NOT VERIFIED.
+
+
+## P003-C03-C01 — Fullscreen-only anchoring and visual fidelity correction
+
+[Owner correction](research/P000/modern/owner-c03-c01-correction.md) • [Work 2 issue #12](https://github.com/thgillwtnorizoh/rasc/issues/12) • [draft PR #13](https://github.com/thgillwtnorizoh/rasc/pull/13) • [Work 1 independent QA #14](https://github.com/thgillwtnorizoh/rasc/issues/14)
+
+- Normal desktop/windowed/maximized applications: P002 Classic and C02 Modern taskbar work-area placement/Auto size RESTORED. These popups no longer anchor or autoscale to the foreground app's client rectangle.
+- Only a focused fullscreen/borderless monitor-spanning window overrides to its monitor's physical full-screen bottom-right. Borderless runtime qualification pending, WPF visibility over exclusive fullscreen not guaranteed.
+- Modern watermark uses the recognizably correct Steam symbol geometry from Simple Icons CC0 (Steam remains a trademark), keeping C02 1/2/3 wave positions. Rare icon uses a rotating conic gold halo behind a stationary mask, not C03 orbiting dots.
+- Exact-source [Windows CI run 44123158624](https://github.com/thgillwtnorizoh/rasc/actions/runs/44123158624): 133/133 PASS, 0 warnings/errors, self-contained Windows x64 artifact 14345807588 at 8d3132e54a7086db6a72001629309d305c63ff57. Independent QA and owner Windows acceptance NOT VERIFIED. P003 OPEN.
