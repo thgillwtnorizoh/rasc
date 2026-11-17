@@ -46,6 +46,7 @@
       <Button Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"
               Click="PreviewProgress_Click"
               ToolTip="Shows a test progress notification only; GT-610 does not persist progress callbacks."/>
+      </WrapPanel>
       <WrapPanel Margin="0,10,0,0" Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock VerticalAlignment="Center" Text="Animation FPS" Margin="0,0,8,0"/>
         <ComboBox x:Name="AnimationFpsBox" Width="154" SelectionChanged="AnimationFpsBox_SelectionChanged"
