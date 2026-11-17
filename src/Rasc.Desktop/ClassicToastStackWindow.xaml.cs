@@ -37,12 +37,16 @@ public partial class ClassicToastStackWindow : Window
         // same physical coordinate system to avoid a one-pixel exposed edge.
         var dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleY;
         if (dpiScale <= 0 || !double.IsFinite(dpiScale)) dpiScale = 1;
-        var y = Math.Round(frame.Y * dpiScale) / dpiScale;
-        var absoluteTop = Math.Max(0, frame.Y + frame.ClipTop);
-        var absoluteBottom = Math.Min(ClassicToastScheduler.ViewportHeight,
-            frame.Y + frame.ClipBottom);
-        var clipTop = Math.Clamp(absoluteTop - y, 0, ClassicToastScheduler.CardHeight);
-        var clipBottom = Math.Clamp(absoluteBottom - y, clipTop, ClassicToastScheduler.CardHeight);
+        // Shared physical-pixel edge quantization. The upper card's bottom
+        // and the lower card's top are projected from the same screen-space
+        // seam, rather than separately rounded local translations/clips.
+        // This guards against subpixel clipping seams on fractional DPI.
+        var px = ClassicToastPixelGrid.Map(frame, dpiScale);
+        var y = px.OriginY / dpiScale;
+        var clipTop = Math.Clamp((px.VisibleTop - px.OriginY) / dpiScale,
+            0, ClassicToastScheduler.CardHeight);
+        var clipBottom = Math.Clamp((px.VisibleBottom - px.OriginY) / dpiScale,
+            clipTop, ClassicToastScheduler.CardHeight);
         card.Clip = new RectangleGeometry(new Rect(0, clipTop,
             ClassicToastScheduler.CardWidth, clipBottom - clipTop));
         Canvas.SetLeft(card, 0);

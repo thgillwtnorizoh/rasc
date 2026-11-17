@@ -55,7 +55,7 @@ internal sealed class ClassicToastHost : IDisposable
     {
         // Reference fixture ONLY. GT-610's stats file has no durable progress stream.
         Enqueue(PreviewEvent(), "Achievement Progress",
-            "Paranatural Collection\n(20,010/100,000)");
+            "Paranatural Collection (20,010/100,000)");
     }
 
     private static UnlockEvent PreviewEvent()

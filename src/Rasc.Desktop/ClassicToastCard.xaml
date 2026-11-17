@@ -28,19 +28,22 @@
                Text="★" Foreground="#B4B4B4" FontFamily="Arial"
                FontSize="28" FontWeight="Bold" TextAlignment="Center"
                VerticalAlignment="Center"/>
-    <!-- Both labels use FriendsSmall (Arial tall12 weight800) in the original;
-         WPF glyph size and raster treatment require comparative screenshots. -->
+    <!-- OWNER VISUAL TARGET: Helvetica Regular, nominal 11.5 WPF DIPs and
+         12.5-DIP line spacing estimated from BOTH reference screenshots.
+         Windows may lack Helvetica: Arial is an explicit fallback only.
+         ARCHIVED MAY 2023 SOURCE conflicts: FriendsSmall Arial tall12 weight800
+         and centered title. Preserve C-D08/C-D09; GUI font raster unverified. -->
     <TextBlock x:Name="Headline" Canvas.Left="88" Canvas.Top="25"
                Width="144" Height="28" Foreground="#C8D0DC"
-               FontFamily="Arial" FontSize="12" FontWeight="ExtraBold"
+               FontFamily="Helvetica, Arial" FontSize="11.5" FontWeight="Normal"
                TextAlignment="Left" TextWrapping="Wrap"
-               TextTrimming="CharacterEllipsis" LineStackingStrategy="BlockLineHeight"
-               LineHeight="13"/>
+               TextTrimming="None" LineStackingStrategy="BlockLineHeight"
+               LineHeight="12.5"/>
     <TextBlock x:Name="Description" Canvas.Left="88" Canvas.Top="53"
                Width="144" Height="28" Foreground="#B4B4B4"
-               FontFamily="Arial" FontSize="12" FontWeight="ExtraBold"
+               FontFamily="Helvetica, Arial" FontSize="11.5" FontWeight="Normal"
                TextAlignment="Left" TextWrapping="Wrap"
-               TextTrimming="CharacterEllipsis" LineStackingStrategy="BlockLineHeight"
-               LineHeight="13"/>
+               TextTrimming="None" LineStackingStrategy="BlockLineHeight"
+               LineHeight="12.5"/>
   </Canvas>
 </UserControl>

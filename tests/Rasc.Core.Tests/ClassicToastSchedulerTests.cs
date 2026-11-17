@@ -190,6 +190,65 @@ public sealed class ClassicToastSchedulerTests
         Assert.True(s.IsIdle);
     }
 
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(1.75)]
+    [InlineData(2.0)]
+    public void PixelGridPreservesZeroGapAtEveryEnterPhase(double dpi)
+    {
+        var s = new ClassicToastScheduler();
+        s.Enqueue(E(1));
+        s.Advance(TimeSpan.Zero);
+        s.Advance(TimeSpan.FromMilliseconds(450));
+        s.Enqueue(E(2));
+        for (var ms = 450; ms <= 900; ms += 5)
+        {
+            var frames = s.Advance(TimeSpan.FromMilliseconds(ms));
+            var upper = ById(frames, 1);
+            var lower = ById(frames, 2);
+            var topEdge = ClassicToastPixelGrid.Map(lower, dpi).OriginY;
+            var upperBottomEdge = (int)Math.Round((upper.Y + ClassicToastScheduler.CardHeight) * dpi,
+                MidpointRounding.AwayFromZero);
+            // A one-pixel *overlap* may exist after raster rounding, but never an
+            // exposed transparent pixel between two touching card backgrounds.
+            Assert.True(upperBottomEdge >= topEdge,
+                $"Screen-pixel gap at {dpi}x / {ms}ms: upper {upperBottomEdge}, lower {topEdge}");
+        }
+    }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void PixelGridTaskbarClipIsExactAtFractionalDpi(double dpi)
+    {
+        var s = new ClassicToastScheduler();
+        s.Enqueue(E(1));
+        s.Advance(TimeSpan.Zero);
+        for (var ms = 0; ms <= 450; ms += 25)
+        {
+            var p = ClassicToastPixelGrid.Map(Only(s, ms), dpi);
+            Assert.Equal((int)Math.Round(ClassicToastScheduler.ViewportHeight * dpi,
+                MidpointRounding.AwayFromZero), p.VisibleBottom);
+            Assert.True(p.VisibleHeight >= 0);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void PixelGridRejectsInvalidDpi(double dpi)
+    {
+        var f = new ClassicToastFrame(E(1), 0, ClassicToastStage.Visible, 188, 0, 94);
+        Assert.Throws<ArgumentOutOfRangeException>(() => ClassicToastPixelGrid.Map(f, dpi));
+    }
+
     [Fact]
     public void R09DuplicateSuppressedWhileTrackedAndReleasedAfterExit()
     {
