@@ -2,7 +2,7 @@
 
 An independent Windows companion for displaying and browsing virtual Counter-Strike: Global Offensive achievements without representing them as Steam-published achievements.
 
-**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C03 render-paced slide + fractional-pixel seam correction PASSED Windows CI (56/56); visual design owner-approved, last 3-stack seam and animation smoothness awaiting runtime requalification; independent QA and subsystem acceptance pending.
+**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 adjustable FPS and DPI/resolution-aware popup sizing PASSED Windows CI (105/105); owner-approved Classic card design preserved, new controls awaiting Windows GUI qualification; independent QA and P002 subsystem acceptance pending.
 
 ## Scope and provenance
 
@@ -25,7 +25,7 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 - **P000:** Steam notification visual and runtime reference investigation. **OPEN**.
   - **P000-C01:** consolidate, independently verify, and publish classic/modern notification reference contracts, their provenance and discrepancies.
 - **P001:** native Windows foundation. **AUTHORIZED / DEVELOPMENT CHECKPOINT** — [Issue #2](https://github.com/thgillwtnorizoh/rasc/issues/2); development tests and Windows build passed, independent QA and owner acceptance pending.
-- **P002:** Classic first renderer **P002-C01**, slide correction **C01**, font calibration **C02**, and display-paced/seam correction **C03** published, [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3). Its exact original animation/font raster remains **UNVERIFIED**, despite passing CI; modern profile remains planned.
+- **P002:** Classic first renderer **P002-C01**, slide correction **C01**, font calibration **C02**, display-paced/seam correction **C03**, and display preferences/DPI scaling **C04** published, [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3). Its exact original animation/font raster remains **UNVERIFIED**, despite passing CI; modern profile remains planned.
 
 Research and checkpoint records belong under `research/P000/` when verified. Maintain recovery notes in-repository. Do not run old Steam client binaries or interact with the installed Steam client as part of static reference analysis.
 
@@ -50,9 +50,17 @@ The app does not modify your CS:GO files or grant Steam achievements. Select the
 
 ## P002 — Classic desktop notification (development, owner-target slide correction)
 
-- [**Latest corrected Windows x64 artifact**](https://github.com/thgillwtnorizoh/rasc/actions/runs/44046616395/artifacts/14312275576) — self-contained WPF app, **48/48 automated tests**, native build and x64 publish passing. **Preview Unlock** and **Preview Progress** are source-independent and never write GC stats or SQLite history.
-- [Current P002 guide](docs/P002/README.md); [P002-C01 original development checkpoint](docs/P002/checkpoints/P002-C01.md); [P002-C01-C01 slide checkpoint](docs/P002/checkpoints/P002-C01-C01.md); [P002-C01-C02 font checkpoint](docs/P002/checkpoints/P002-C01-C02.md); [P002-C01-C03 render/seam checkpoint](docs/P002/checkpoints/P002-C01-C03.md); [owner-accepted visual baseline](docs/P002/acceptance/visual-design-baseline.md); [owner image calibration](docs/P002/fixtures/owner-classic-screenshot-calibration.md).
+- [**Latest corrected Windows x64 artifact**](https://github.com/thgillwtnorizoh/rasc/actions/runs/44050154729/artifacts/14313207463) — self-contained WPF app, **48/48 automated tests**, native build and x64 publish passing. **Preview Unlock** and **Preview Progress** are source-independent and never write GC stats or SQLite history.
+- [Current P002 guide](docs/P002/README.md); [P002-C01 original development checkpoint](docs/P002/checkpoints/P002-C01.md); [P002-C01-C01 slide checkpoint](docs/P002/checkpoints/P002-C01-C01.md); [P002-C01-C02 font checkpoint](docs/P002/checkpoints/P002-C01-C02.md); [P002-C01-C03 render/seam checkpoint](docs/P002/checkpoints/P002-C01-C03.md); [P002-C01-C04 FPS/DPI checkpoint](docs/P002/checkpoints/P002-C01-C04.md); [owner-accepted visual baseline](docs/P002/acceptance/visual-design-baseline.md); [owner image calibration](docs/P002/fixtures/owner-classic-screenshot-calibration.md).
 - Classic source reference: `research/P000/classic/reference.md`. The corrected popup uses one clipped stack host, intended flush placement, **no alpha fade or visible strokes**, and user-target motion; **owner-target Helvetica Regular at 11.5 WPF DIPs with Arial fallback, not native-proven**; the source-vintage font conflict, original easing/overflow, exact raster and in-game overlay remain unverified.
 - Existing achievements restored in the history list do **not** trigger new toasts; only newly observed unlock events may do so.
 
 P000/P001/P002 subsystems remain **OPEN** without owner acceptance or independent Work 1 QA. Do not report a WPF build as human GUI qualification.
+
+## P002-C01-C04 — Adjustable animation FPS and DPI-aware sizing
+
+**Current development build:** [Windows x64 artifact 14313207463](https://github.com/thgillwtnorizoh/rasc/actions/runs/44050154729/artifacts/14313207463) / [CI 44050154729](https://github.com/thgillwtnorizoh/rasc/actions/runs/44050154729), **105/105 automated tests** and self-contained Windows x64 publication passed. Exact code SHA `66c3f4559b59d6db763b4b72a0969c42926627b6`. [Full checkpoint](docs/P002/checkpoints/P002-C01-C04.md).
+
+**Settings:** Animation FPS is **Display-synced** (default) or any integer from **15 through 240**, including presets 30/60/90/120/144/165/240. FPS is an *average visual update target* sampled from WPF's real render callbacks, not physical monitor FPS or a change to 450ms slide/6000ms hold. Popup Size offers **Auto** (default; resolution-aware 1080p baseline with normal Windows DPI scaling) or 100–250% manual choices. Preferences persist at `%LOCALAPPDATA%\RASC\appearance.json`, and can be changed while toasts are visible. `app.manifest` requests PerMonitorV2 DPI awareness. Primary screen/work-area presentation only; additional monitors and actual pixel fidelity need human qualification. The accepted C02 card XAML/artwork/typography are unchanged.
+
+The owner reported C03 animation **123.3 WPF Rendering callbacks/sec**, longest gap **36.90ms** across seven segments; not actual presented FPS. P002 Classic is a **development-complete candidate for these two requested features**, subject to the owner's native Windows tests and independent QA. No new original Steam fidelity or subsystem acceptance is claimed.

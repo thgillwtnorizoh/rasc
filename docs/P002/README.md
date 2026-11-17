@@ -1,3 +1,31 @@
+# P002-C01-C04 — Current Classic FPS and DPI/resolution settings
+
+**Status:** **VERIFIED DEVELOPMENT CHECKPOINT — 105/105 tests, WPF build and self-contained x64 artifact successful**. Owner's accepted C02 Classic card design remains unchanged. The FPS and high-resolution-size behavior have **NOT** yet been human-qualified on the owner's Windows desktop. P002 stays OPEN and not independently verified.
+
+<https://github.com/thgillwtnorizoh/rasc/actions/runs/44050154729/artifacts/14313207463> — **current Windows x64 ZIP**. Exact source `66c3f4559b59d6db763b4b72a0969c42926627b6`. [CI run](https://github.com/thgillwtnorizoh/rasc/actions/runs/44050154729) · [UEP checkpoint](checkpoints/P002-C01-C04.md).
+
+## How to use
+
+Extract the entire ZIP and launch `Rasc.Desktop.exe`. The main window now exposes two saved controls directly below Start/Stop and the existing Preview buttons:
+
+- **Animation FPS**: `Display-synced` by default, or choose a preset. The field is editable: **type any integer from 15 to 240**, then press Enter or leave the field. Examples: 60, 75, 120, 123, 144. Invalid entries revert to the last valid setting. This is a target for the **average number of visual position updates** during the 450ms slide, not a guaranteed physical FPS or a changed hold/slide duration. At a lower-refresh display, WPF cannot generate additional hardware frames.
+- **Popup size**: `Auto (screen-aware)` by default, or manual **100, 125, 150, 175, 200, 250%**. Auto scales relative to 1080 **logical** pixels of primary-screen height while respecting Windows DPI. At **2560×1440 with Windows scaling 100%**, Auto targets a **1.333× card** (about 320×125 physical px). With Windows scaling 125%, the system already scales WPF; Auto only adds enough to maintain a similar physical size without doubling the DPI factor. At 3840×2160/100%, Auto targets 2×. Manual percentages scale the existing card uniformly.
+- Settings save automatically in `%LOCALAPPDATA%\RASC\appearance.json`, separate from `history.db`; malformed/out-of-range preferences fall back safely. **Preview Unlock** and **Preview Progress** remain nonpersistent presentation-only fixtures, never writing GT-610 achievements or SQLite awards.
+
+## Requested owner Windows qualification
+
+1. At your current **2560×1440** or other high-resolution desktop, compare **Auto** against **100%** and **150%**. Confirm the art/text stays proportional, the three cards remain joined and flush to the taskbar/right edge, no clipping occurs, and no input focus is stolen.
+2. Try **Display-synced**, **60**, **120** and one custom value (**75** or **123**). Use two or three quick previews. Compare apparent smoothness and ensure the motion duration stays about **450 ms** regardless of selected FPS.
+3. Change FPS/size **during** an active popup; remaining toasts should reflow without resetting their six-second hold or creating any new achievement event.
+4. Close RASC. The optional log `%LOCALAPPDATA%\RASC\last-classic-animation.txt` reports the chosen FPS/size, render callback count/rate, and visually applied update rate. It is **not** measured hardware presentation FPS. Reopen the app and confirm both controls retained your choices.
+5. If you change Windows DPI scale or screen resolution, check the popup remains anchored to the primary desktop work area. PerMonitorV2 is requested in the app manifest; moving the toast between monitors or exclusive-fullscreen/game overlays remains unqualified.
+
+**Scope boundary:** we have not changed `ClassicToastCard.xaml`'s accepted Helvetica Regular/gradient/icon/text layout, source read-only provider, SQLite/dedup, slide easing, FIFO queue, or original Valve assets. The C03 top/middle seam and physical DPI raster still require your visual check. This build qualifies *development correctness* only; after owner runtime acceptance, Classic rendering can be recommended as a bounded completed profile while P002 overall may remain open for Modern and independent QA.
+
+---
+
+## Historical P002-C01-C03 and earlier guides (superseded for current artifact)
+
 # P002-C01-C03 — Current Classic render-paced motion / seam-check build
 
 **Current Windows development:** [CI run 44046616395](https://github.com/thgillwtnorizoh/rasc/actions/runs/44046616395), [self-contained Windows x64 artifact](https://github.com/thgillwtnorizoh/rasc/actions/runs/44046616395/artifacts/14312275576). Exact tested source `984db970f0c6ac9880333606da8195a7d2b57543`. **56 passed / 0 failed / 0 skipped; WPF build + publish + artifact upload PASS**.
