@@ -63,3 +63,11 @@ The smaller unlock screenshot appears cropped or transformed relative to the lar
 ## Reproduction and next task
 
 With original screenshots in owner-provided chat attachments, compare SHA-256 and inspect the measurements above. Do **not** use OCR as a typography acceptance oracle. Work 2 next: add explicit Unlock and Progress **preview-only fixtures** (no file writes), use the original nominal text rectangles as *starting source parameters*, generate WPF screenshot at consistent DPI and inspect baseline/glyph size/wrap independently. Keep the P002-C01-C01 motion contract and independent QA boundary unchanged.
+
+## Additional typography conflict: screenshot text alignment
+
+Both screenshot samples have **headline and body glyph ink starting at almost the same x coordinate**: unlock headline x98 versus body x99; progress headline x148 versus body x148–149. Because the progress headline occupies substantially less than the source text rectangle width, this is evidence for **visually left-aligned title text** in the owner's target. The May 2023 `AchievementNotification.res` explicitly says `LabelTitle.textAlignment="center"` and `LabelDescription.textAlignment="north-west"`. **This is a source-versus-owner-screenshot discrepancy**, not a reason to rewrite the archived resource.
+
+For a **visual-target engineering profile only**, initialize both title and body as left-aligned at their source x88 column; retain a compatibility switch/explicit comment for source `center` if independent reference validation requires it. Test the uploaded screenshot's headline/body left-edge near-equality before claiming target parity. The WPF first prototype title was center aligned and its body default-weight, whereas the source applies the `FriendsSmall` weight800 font to **both** labels. Make body weight consistent with the resource in the next corrected prototype; font rasterization and glyph heights still require runtime comparison.
+
+**C-D08 (NEW):** source `LabelTitle` alignment CENTER vs both user-supplied screenshots' **apparently left-aligned headline**; exact build or runtime/control overrides not independently established.
