@@ -4,8 +4,8 @@ using Xunit;
 namespace Rasc.Core.Tests;
 
 /// <summary>
-/// Development integration: GC file snapshot -> durable event store -> Classic timeline.
-/// Does not qualify WPF's live window appearance.
+/// Development-only integration: GC snapshots -> durable ledger -> Classic slide timeline.
+/// Does not establish WPF GUI/runtime visual equivalence.
 /// </summary>
 public sealed class ClassicToastIntegrationTests
 {
@@ -14,7 +14,7 @@ public sealed class ClassicToastIntegrationTests
             values.ToDictionary(x => x.Item1, x => x.Item2, StringComparer.Ordinal));
 
     [Fact]
-    public void SixNewUnlocksProduceThreeThenThreeWithoutReplayFromHistory()
+    public void SixNewUnlocksAnimateInOrderWithoutReplayFromRestoredHistory()
     {
         var db = Path.Combine(Path.GetTempPath(), "rasc-classic-" + Guid.NewGuid().ToString("N") + ".db");
         const string source = "TEST_GC";
@@ -33,14 +33,21 @@ public sealed class ClassicToastIntegrationTests
         Assert.Empty(store.GetPending(source));
 
         var first = queue.Advance(TimeSpan.Zero);
-        Assert.Equal(3, first.Count);
-        Assert.Equal(new[] { "AWARD_1", "AWARD_2", "AWARD_3" },
-            first.Select(x => x.Event.AchievementId));
-        var second = queue.Advance(TimeSpan.FromMilliseconds(6900));
-        Assert.Equal(new[] { "AWARD_4", "AWARD_5", "AWARD_6" },
-            second.Select(x => x.Event.AchievementId));
+        Assert.Equal("AWARD_1", Assert.Single(first).Event.AchievementId);
+        Assert.Equal(ClassicToastStage.Entering, first[0].Stage);
 
-        // History returns events, but is explicitly NOT a source of presentation enqueue.
+        var allStarts = new List<string>();
+        for (var ms = 0; ms <= 35000; ms += 25)
+        {
+            foreach (var frame in queue.Advance(TimeSpan.FromMilliseconds(ms)))
+                if (frame.Stage == ClassicToastStage.Entering &&
+                    !allStarts.Contains(frame.Event.AchievementId))
+                    allStarts.Add(frame.Event.AchievementId);
+        }
+        Assert.Equal(new[] { "AWARD_1", "AWARD_2", "AWARD_3", "AWARD_4", "AWARD_5", "AWARD_6" }, allStarts);
+        Assert.True(queue.IsIdle);
+
+        // History is intentionally not a source of presentation enqueue.
         Assert.Equal(6, store.GetRecent(source).Count);
         Assert.Empty(store.GetPending(source));
         Assert.Empty(store.AcceptSnapshot(source,
