@@ -188,6 +188,18 @@ internal sealed class ModernToastHost : IDisposable
         _holdWake.Start();
     }
 
+    private static double LegacyDesktopScale(Rect work, int requested)
+    {
+        // EXACT P003-C02 desktop behavior, irrespective of whatever normal
+        // app happens to hold focus. Do not shrink to its client rectangle.
+        var scale = requested == 0
+            ? Math.Clamp(SystemParameters.PrimaryScreenHeight / 1080.0, 1.0, 2.0)
+            : requested / 100.0;
+        return Math.Max(0.1, Math.Min(scale, Math.Min(
+            work.Width / ModernToastScheduler.CardWidth,
+            work.Height / (ModernToastScheduler.CardHeight * ModernToastScheduler.Capacity))));
+    }
+
     private void Tick()
     {
         if (_disposed) return;
@@ -205,9 +217,11 @@ internal sealed class ModernToastHost : IDisposable
             _content.Remove(id);
         }
 
-        var target = ForegroundWindowPlacement.Capture();
-        var scale = target.Scale(ModernToastScheduler.CardWidth,
-            ModernToastScheduler.CardHeight * ModernToastScheduler.Capacity, _sizePercent);
+        var fullscreen = ForegroundWindowPlacement.CaptureFullscreen();
+        var work = SystemParameters.WorkArea;
+        var scale = fullscreen is { } target
+            ? target.ModernScale(_sizePercent)
+            : LegacyDesktopScale(work, _sizePercent);
         // Scheduler returns top-to-bottom. Last-created lower windows naturally
         // cover earlier upper ones while entering from the common origin.
         foreach (var frame in frames)
@@ -216,10 +230,10 @@ internal sealed class ModernToastHost : IDisposable
             {
                 window = new ModernToastWindow(_content[frame.Event.EventId]);
                 _windows.Add(frame.Event.EventId, window);
-                window.Apply(frame, scale, target);
+                window.Apply(frame, scale, work, fullscreen);
                 window.Show();
             }
-            else window.Apply(frame, scale, target);
+            else window.Apply(frame, scale, work, fullscreen);
         }
 
         if (_schedule.IsIdle)

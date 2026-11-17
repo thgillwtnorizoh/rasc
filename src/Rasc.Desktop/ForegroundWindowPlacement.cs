@@ -18,12 +18,19 @@ internal static class ForegroundWindowPlacement
         public double WidthDips => AreaPixels.Width / DpiScale;
         public double HeightDips => AreaPixels.Height / DpiScale;
 
-        internal double Scale(double width, double height, int percent) =>
-            PopupAnchorGeometry.AutoScale(HeightDips, WidthDips, HeightDips,
-                width, height, percent);
+        internal double ClassicScale(int percent) =>
+            ClassicPopupScale.Resolve(HeightDips, WidthDips, HeightDips, percent);
 
-        /// <param name="offsetDip">Motion offset of top-left from bottom edge
-        /// of target app, in unscaled card DIPs (0 starts below the app).</param>
+        internal double ModernScale(int percent)
+        {
+            var desired = percent == 0
+                ? Math.Clamp(HeightDips / 1080.0, 1, 2)
+                : percent / 100.0;
+            var fit = Math.Min(WidthDips / ModernToastScheduler.CardWidth,
+                HeightDips / (ModernToastScheduler.CardHeight * ModernToastScheduler.Capacity));
+            return Math.Max(0.1, Math.Min(desired, fit));
+        }
+
         internal void Place(Window window, double designWidth, double designHeight,
             double scale, double? offsetDip = null)
         {
@@ -37,8 +44,6 @@ internal static class ForegroundWindowPlacement
             var hwnd = new WindowInteropHelper(window).Handle;
             if (hwnd == IntPtr.Zero)
             {
-                // Initial WPF placement only. OnSourceInitialized and next
-                // composition tick reapply exact native physical placement.
                 window.Left = x / DpiScale;
                 window.Top = y / DpiScale;
                 return;
@@ -54,49 +59,46 @@ internal static class ForegroundWindowPlacement
         }
     }
 
-    internal static Target Capture()
+    /// <summary>
+    /// Returns null for ALL normal/windowed/maximized focused applications,
+    /// not their bounds. In that case clients must use their exact pre-C03
+    /// SystemParameters.WorkArea positioning and existing Auto scale.
+    /// </summary>
+    internal static Target? CaptureFullscreen()
     {
-        // All native rectangles are physical device pixels for a PMv2 WPF app.
         var foreground = GetForegroundWindow();
-        var monitor = MonitorFromWindow(foreground != IntPtr.Zero
-            ? foreground : GetDesktopWindow(), MonitorDefaultToNearest);
-
+        if (foreground == IntPtr.Zero || !IsWindowVisible(foreground) ||
+            IsIconic(foreground) || !GetWindowRect(foreground, out var windowRect))
+            return null;
+        var monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
         var mi = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref mi))
-            return new Target(new PopupRect(SystemParameters.WorkArea.Left,
-                SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Width,
-                SystemParameters.WorkArea.Height), 1);
+            return null;
 
-        var monitorRect = Rect(mi.Monitor);
-        var work = Rect(mi.Work);
-        var windowRect = default(NativeRect);
-        var valid = foreground != IntPtr.Zero && IsWindowVisible(foreground)
-            && !IsIconic(foreground) && GetWindowRect(foreground, out windowRect);
-        if (valid)
-        {
-            try
-            {
-                // Prefer visible frame bounds to invisible DWM resize borders.
-                if (DwmGetWindowAttribute(foreground, DwmaExtendedFrameBounds,
-                    out var visible, Marshal.SizeOf<NativeRect>()) == 0)
-                    windowRect = visible;
-            }
-            catch (DllNotFoundException) { /* WPF fallback to GetWindowRect */ }
-            catch (EntryPointNotFoundException) { }
-        }
-
-        var geometry = PopupAnchorGeometry.Resolve(
-            Rect(windowRect), monitorRect, work, valid);
-        uint dx = 96, dy = 96;
         try
         {
-            if (GetDpiForMonitor(monitor, MdtEffectiveDpi, out dx, out dy) != 0)
-                dx = 96;
+            if (DwmGetWindowAttribute(foreground, DwmaExtendedFrameBounds,
+                out var visible, Marshal.SizeOf<NativeRect>()) == 0 &&
+                Rect(visible).IsValid)
+                windowRect = visible;
         }
-        catch (DllNotFoundException) { dx = 96; }
-        catch (EntryPointNotFoundException) { dx = 96; }
-        var dpi = dx is >= 48 and <= 960 ? dx / 96.0 : 1.0;
-        return new Target(geometry, dpi);
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+
+        var monitorRect = Rect(mi.Monitor);
+        if (!PopupAnchorGeometry.IsFullscreen(Rect(windowRect), monitorRect, true))
+            return null;
+
+        uint dpi = 96;
+        try
+        {
+            if (GetDpiForMonitor(monitor, MdtEffectiveDpi, out var dx, out _) == 0)
+                dpi = dx;
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+
+        return new Target(monitorRect, dpi is >= 48 and <= 960 ? dpi / 96.0 : 1.0);
     }
 
     private static PopupRect Rect(NativeRect rect) =>

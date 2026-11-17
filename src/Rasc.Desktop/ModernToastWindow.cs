@@ -156,58 +156,29 @@ internal sealed class ModernToastWindow : Window
 
     private static Canvas CreateWatermark()
     {
-        // Steam-like mechanical wheel/rod/hub drawn from simple geometry.
-        // This supersedes the C02 bare-circles placeholder without embedding
-        // copyrighted Valve artwork. Positioning is deliberately unchanged:
-        // one continuous faint watermark clipped across 1/2/3 popup slots.
-        // Still not source-equivalent without the packaged CSS/svg asset.
+        // The C03 hand-drawn rings were not even recognizably Steam. Use
+        // the actual geometric Steam mark, not an improvised mechanism.
+        // Vector path: simple-icons/simple-icons, icons/steam.svg (CC0);
+        // the Steam mark remains Valve's trademark. This is a faint,
+        // noninteractive historical UI reference, not Steam affiliation.
+        // Wave-specific logo Y offsets/opacity and 170-unit footprint are
+        // UNCHANGED from the user-approved C02 positioning.
         var canvas = new Canvas
         {
-            Width = 170, Height = ModernWatermarkLayout.LogoHeight,
+            Width = 170,
+            Height = ModernWatermarkLayout.LogoHeight,
             Opacity = 0.09,
             IsHitTestVisible = false
         };
-        var ink = new SolidColorBrush(Color.FromRgb(118, 134, 154));
-        ink.Freeze();
-
-        // Main diagonal connecting rod must sit underneath the wheel disks.
-        var rod = new Line
+        var logo = new Path
         {
-            X1 = 30, Y1 = 139, X2 = 122, Y2 = 62,
-            Stroke = ink, StrokeThickness = 18,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round
+            Width = 170,
+            Height = 170,
+            Stretch = Stretch.Fill,
+            Fill = new SolidColorBrush(Color.FromRgb(118, 134, 154)),
+            Data = Geometry.Parse("M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z")
         };
-        canvas.Children.Add(rod);
-
-        // Steam-logo-like upper-right wheel: a circular body with an open
-        // inner channel. Difference geometry, not layered dark paint, means
-        // original radial background remains visible through the opening.
-        var disc = new Path
-        {
-            Fill = ink,
-            Data = new CombinedGeometry(GeometryCombineMode.Exclude,
-                new EllipseGeometry(new Rect(78, 0, 118, 118)),
-                new EllipseGeometry(new Rect(96, 18, 82, 82)))
-        };
-        canvas.Children.Add(disc);
-
-        var axle = new Ellipse
-        {
-            Width = 43, Height = 43, Fill = ink
-        };
-        Canvas.SetLeft(axle, 115);
-        Canvas.SetTop(axle, 38);
-        canvas.Children.Add(axle);
-
-        var smallHub = new Path
-        {
-            Fill = ink,
-            Data = new CombinedGeometry(GeometryCombineMode.Exclude,
-                new EllipseGeometry(new Rect(2, 109, 57, 57)),
-                new EllipseGeometry(new Rect(17, 124, 27, 27)))
-        };
-        canvas.Children.Add(smallHub);
+        canvas.Children.Add(logo);
         return canvas;
     }
 
@@ -244,26 +215,155 @@ internal sealed class ModernToastWindow : Window
         return medal;
     }
 
+    private static readonly ImageSource RareConicSource = CreateRareConicSource();
+
+    /// <summary>
+    /// WPF reconstruction of the Steam UI's rare glow: a rotating *conic
+    /// gradient* (6s foreground, 18s reverse blur), masked to a STATIONARY
+    /// square halo around the achievement bitmap. Unlike the C03 five-dot
+    /// effect, only light moves: the achievement frame itself never rotates.
+    /// Gradient stops/speeds trace the Steam UI CSS (P003-C03-C01 research);
+    /// blend mode and exact rare-toasts asset remain unverified.
+    /// </summary>
+    private static ImageSource CreateRareConicSource()
+    {
+        const int steps = 96;
+        const double size = 96;
+        var center = new Point(size / 2, size / 2);
+        var drawing = new DrawingGroup();
+        for (var i = 0; i < steps; i++)
+        {
+            var a = i * Math.PI * 2 / steps - Math.PI / 2;
+            var b = (i + 1) * Math.PI * 2 / steps - Math.PI / 2;
+            var radius = size * 0.75;
+            var p1 = new Point(center.X + radius * Math.Cos(a),
+                center.Y + radius * Math.Sin(a));
+            var p2 = new Point(center.X + radius * Math.Cos(b),
+                center.Y + radius * Math.Sin(b));
+            var geometry = new StreamGeometry();
+            using (var ctx = geometry.Open())
+            {
+                ctx.BeginFigure(center, true, true);
+                ctx.LineTo(p1, true, false);
+                ctx.ArcTo(p2, new Size(radius, radius), 0, false,
+                    SweepDirection.Clockwise, true, false);
+            }
+            geometry.Freeze();
+            var value = ConicGold((i + 0.5) / steps);
+            var brush = new SolidColorBrush(Color.FromArgb(
+                (byte)Math.Round(value * 255), 255, 184, 78));
+            brush.Freeze();
+            drawing.Children.Add(new GeometryDrawing(brush, null, geometry));
+        }
+        drawing.Freeze();
+        var img = new DrawingImage(drawing);
+        img.Freeze();
+        return img;
+    }
+
+    private static double ConicGold(double fraction)
+    {
+        // Source-inspired repeating-conic gradient:
+        // transparent at 6%; translucent 0/10/35/60/100%;
+        // bright bands near 26/40/82% (Steam app details rare glow).
+        double[] positions = [0, .06, .10, .26, .35, .40, .60, .82, 1];
+        double[] values = [.178, 0, .178, 1, .178, 1, .178, 1, .178];
+        for (var i = 1; i < positions.Length; i++)
+        {
+            if (fraction > positions[i]) continue;
+            var t = (fraction - positions[i - 1]) /
+                (positions[i] - positions[i - 1]);
+            return values[i - 1] + (values[i] - values[i - 1]) * t;
+        }
+        return values[^1];
+    }
+
+    private static Geometry CreateHaloMask()
+    {
+        var geometry = new CombinedGeometry(GeometryCombineMode.Exclude,
+            new RectangleGeometry(new Rect(0, 0, 66, 66)),
+            new RectangleGeometry(new Rect(9, 9, 48, 48)));
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static Image MakeRotatingGlow(double seconds, bool reverse,
+        double opacity, double blurRadius)
+    {
+        var image = new Image
+        {
+            Source = RareConicSource,
+            Width = 96,
+            Height = 96,
+            Opacity = opacity,
+            IsHitTestVisible = false,
+            RenderTransformOrigin = new Point(.5, .5),
+            Effect = new BlurEffect { Radius = blurRadius }
+        };
+        var rotation = new RotateTransform();
+        image.RenderTransform = rotation;
+        rotation.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(0, reverse ? -360 : 360,
+                new Duration(TimeSpan.FromSeconds(seconds)))
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            });
+        return image;
+    }
+
     private static FrameworkElement CreateIcon(bool rare)
     {
         var iconCanvas = new Canvas
         {
-            Width = 54, Height = 54,
+            Width = 54,
+            Height = 54,
             IsHitTestVisible = false
         };
         Canvas.SetLeft(iconCanvas, 6);
         Canvas.SetTop(iconCanvas, 8);
 
-        // There is NO ordinary blue icon frame, and NO solid gold rarity
-        // frame. The actual award bitmap will be supplied by a future catalog.
+        // NO blue ordinary frame, NO solid yellow rare frame.
+        if (rare)
+        {
+            // Full 66x66 stationary mask, inset around the 48x48 icon.
+            // Rotating 96x96 conic layers are larger than the mask to cover
+            // its four corners at every angle; no rotating square artifacts.
+            var halo = new Canvas
+            {
+                Width = 66,
+                Height = 66,
+                ClipToBounds = true,
+                IsHitTestVisible = false,
+                OpacityMask = new DrawingBrush(new GeometryDrawing(
+                    Brushes.White, null, CreateHaloMask()))
+                {
+                    Stretch = Stretch.Fill
+                }
+            };
+            Canvas.SetLeft(halo, -6);
+            Canvas.SetTop(halo, -6);
+
+            var slowHalo = MakeRotatingGlow(18, true, .48, 5);
+            Canvas.SetLeft(slowHalo, -15);
+            Canvas.SetTop(slowHalo, -15);
+            halo.Children.Add(slowHalo);
+
+            var sharpGlow = MakeRotatingGlow(6, false, .83, 1.2);
+            Canvas.SetLeft(sharpGlow, -15);
+            Canvas.SetTop(sharpGlow, -15);
+            halo.Children.Add(sharpGlow);
+            iconCanvas.Children.Add(halo);
+        }
+
         var image = new Border
         {
-            Width = 48, Height = 48,
+            Width = 48,
+            Height = 48,
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromRgb(13, 16, 22)),
             Child = new TextBlock
             {
-                Text = "★",
+                Text = "★", // Explicit placeholder until CS:GO icon catalog.
                 FontSize = 23,
                 Foreground = rare
                     ? new SolidColorBrush(Color.FromRgb(255, 216, 70))
@@ -274,52 +374,12 @@ internal sealed class ModernToastWindow : Window
         };
         Canvas.SetLeft(image, 3);
         Canvas.SetTop(image, 3);
-        if (rare)
-        {
-            // Community-style rotating, softly diffused gold highlight.
-            // Not claimed byte-for-byte equivalent to Steam's conic-gradient
-            // or rare-achievement mask CSS until native toast code is traced.
-            image.Effect = new DropShadowEffect
-            {
-                Color = Color.FromRgb(255, 183, 32),
-                BlurRadius = 14,
-                ShadowDepth = 0,
-                Opacity = 0.85
-            };
-            var glints = new Canvas
-            {
-                Width = 54, Height = 54, IsHitTestVisible = false,
-                RenderTransformOrigin = new Point(0.5, 0.5),
-                Opacity = 0.65
-            };
-            for (var i = 0; i < 5; i++)
-            {
-                var angle = i * Math.PI * 2 / 5;
-                var glint = new Ellipse
-                {
-                    Width = 9, Height = 9,
-                    Fill = new RadialGradientBrush(
-                        Color.FromArgb(210, 255, 221, 90),
-                        Color.FromArgb(0, 255, 184, 78))
-                };
-                Canvas.SetLeft(glint, 27 + Math.Cos(angle) * 24 - 4.5);
-                Canvas.SetTop(glint, 27 + Math.Sin(angle) * 24 - 4.5);
-                glints.Children.Add(glint);
-            }
-            glints.RenderTransform = new RotateTransform();
-            glints.RenderTransform.BeginAnimation(RotateTransform.AngleProperty,
-                new DoubleAnimation(0, 360, new Duration(TimeSpan.FromSeconds(6)))
-                {
-                    RepeatBehavior = RepeatBehavior.Forever
-                });
-            iconCanvas.Children.Add(glints);
-        }
         iconCanvas.Children.Add(image);
         return iconCanvas;
     }
 
     internal void Apply(ModernToastFrame frame, double scale,
-        ForegroundWindowPlacement.Target target)
+        Rect desktopWorkArea, ForegroundWindowPlacement.Target? fullscreen)
     {
         if (!double.IsFinite(scale) || scale <= 0) scale = 1;
         if (_scale != scale)
@@ -333,12 +393,18 @@ internal sealed class ModernToastWindow : Window
         Canvas.SetTop(_watermark,
             ModernWatermarkLayout.TopInsideCard(frame.WaveSize, frame.Slot));
 
-        // Native physical-pixel anchoring follows the foreground application's
-        // monitor. In windowed mode clip at visible window/work area; in
-        // fullscreen (including borderless) the monitor edge is used.
+        // Only focused fullscreen/borderless windows override the original
+        // C02 bottom-right desktop/taskbar position. Normal apps NEVER
+        // control popup location or scale.
         _lastOffsetDip = frame.BottomRelativeY;
-        target.Place(this, ModernToastScheduler.CardWidth,
-            ModernToastScheduler.CardHeight, scale, _lastOffsetDip);
+        if (fullscreen is { } target)
+            target.Place(this, ModernToastScheduler.CardWidth,
+                ModernToastScheduler.CardHeight, scale, _lastOffsetDip);
+        else
+        {
+            Left = desktopWorkArea.Right - Width;
+            Top = desktopWorkArea.Bottom + _lastOffsetDip * scale;
+        }
 
         // Use unscaled logical design units for clipping. All cards in a wave
         // start at the same invisible y=0 below the app and enter above it.
@@ -361,9 +427,10 @@ internal sealed class ModernToastWindow : Window
             // WPF creates the HWND before the first device-pixel positioning
             // pass; the host continues updating the physical anchor.
             if (!IsLoaded) return;
-            var t = ForegroundWindowPlacement.Capture();
-            t.Place(this, ModernToastScheduler.CardWidth,
-                ModernToastScheduler.CardHeight, _scale, _lastOffsetDip);
+            var t = ForegroundWindowPlacement.CaptureFullscreen();
+            if (t is { } fullscreen)
+                fullscreen.Place(this, ModernToastScheduler.CardWidth,
+                    ModernToastScheduler.CardHeight, _scale, _lastOffsetDip);
         }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
