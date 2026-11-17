@@ -26,6 +26,7 @@ internal sealed class ModernToastWindow : Window
     private readonly Canvas _surface;
     private readonly Canvas _watermark;
     private double _scale = 1;
+    private double _lastOffsetDip;
 
     internal ModernToastWindow(ModernToastContent content)
     {
@@ -97,9 +98,15 @@ internal sealed class ModernToastWindow : Window
                 FontSize = 11,
                 IsHitTestVisible = false
             };
-            Canvas.SetLeft(numeric, 69);
+            Canvas.SetLeft(numeric, 84);
             Canvas.SetTop(numeric, 31);
             _surface.Children.Add(numeric);
+            // The original progress screenshot shows a small medal/rosette
+            // immediately before the numeric "(current/max)" label.
+            var medal = CreateProgressMedal();
+            Canvas.SetLeft(medal, 69);
+            Canvas.SetTop(medal, 33);
+            _surface.Children.Add(medal);
 
             var track = new Border
             {
@@ -149,8 +156,11 @@ internal sealed class ModernToastWindow : Window
 
     private static Canvas CreateWatermark()
     {
-        // Independently modeled Steam-like geometry, not extracted artwork.
-        // Low alpha is intentional; original asset/positioning is unverified.
+        // Steam-like mechanical wheel/rod/hub drawn from simple geometry.
+        // This supersedes the C02 bare-circles placeholder without embedding
+        // copyrighted Valve artwork. Positioning is deliberately unchanged:
+        // one continuous faint watermark clipped across 1/2/3 popup slots.
+        // Still not source-equivalent without the packaged CSS/svg asset.
         var canvas = new Canvas
         {
             Width = 170, Height = ModernWatermarkLayout.LogoHeight,
@@ -159,39 +169,79 @@ internal sealed class ModernToastWindow : Window
         };
         var ink = new SolidColorBrush(Color.FromRgb(118, 134, 154));
         ink.Freeze();
-        var ring = new Ellipse
+
+        // Main diagonal connecting rod must sit underneath the wheel disks.
+        var rod = new Line
         {
-            Width = 137, Height = 137, Stroke = ink, StrokeThickness = 19,
-            Fill = Brushes.Transparent
-        };
-        Canvas.SetLeft(ring, 52);
-        Canvas.SetTop(ring, 0);
-        canvas.Children.Add(ring);
-        var arm = new Line
-        {
-            X1 = 23, Y1 = 138, X2 = 98, Y2 = 68,
-            Stroke = ink, StrokeThickness = 19,
+            X1 = 30, Y1 = 139, X2 = 122, Y2 = 62,
+            Stroke = ink, StrokeThickness = 18,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round
         };
-        canvas.Children.Add(arm);
-        var hub = new Ellipse
+        canvas.Children.Add(rod);
+
+        // Steam-logo-like upper-right wheel: a circular body with an open
+        // inner channel. Difference geometry, not layered dark paint, means
+        // original radial background remains visible through the opening.
+        var disc = new Path
         {
-            Width = 54, Height = 54, Stroke = ink, StrokeThickness = 9,
-            Fill = Brushes.Transparent
+            Fill = ink,
+            Data = new CombinedGeometry(GeometryCombineMode.Exclude,
+                new EllipseGeometry(new Rect(78, 0, 118, 118)),
+                new EllipseGeometry(new Rect(96, 18, 82, 82)))
         };
-        Canvas.SetLeft(hub, 3);
-        Canvas.SetTop(hub, 112);
-        canvas.Children.Add(hub);
+        canvas.Children.Add(disc);
+
         var axle = new Ellipse
         {
-            Width = 31, Height = 31, Stroke = ink, StrokeThickness = 6,
-            Fill = Brushes.Transparent
+            Width = 43, Height = 43, Fill = ink
         };
-        Canvas.SetLeft(axle, 94);
-        Canvas.SetTop(axle, 53);
+        Canvas.SetLeft(axle, 115);
+        Canvas.SetTop(axle, 38);
         canvas.Children.Add(axle);
+
+        var smallHub = new Path
+        {
+            Fill = ink,
+            Data = new CombinedGeometry(GeometryCombineMode.Exclude,
+                new EllipseGeometry(new Rect(2, 109, 57, 57)),
+                new EllipseGeometry(new Rect(17, 124, 27, 27)))
+        };
+        canvas.Children.Add(smallHub);
         return canvas;
+    }
+
+    private static FrameworkElement CreateProgressMedal()
+    {
+        // Tiny monochrome award marker from owner screenshot, modeled with
+        // original vector primitives rather than emoji or bundled client art.
+        var medal = new Canvas { Width = 12, Height = 12, IsHitTestVisible = false };
+        var silver = new SolidColorBrush(Color.FromRgb(152, 167, 181));
+        silver.Freeze();
+        var ribbon = new Polygon
+        {
+            Points = new PointCollection
+            {
+                new(3.1, 1), new(5, 4), new(7.2, 1),
+                new(9.6, 1), new(7.7, 6), new(4.2, 6), new(1, 1)
+            },
+            Fill = silver,
+            Opacity = 0.65
+        };
+        medal.Children.Add(ribbon);
+        var rosette = new Ellipse
+        {
+            Width = 7, Height = 7, Stroke = silver,
+            StrokeThickness = 1.4, Fill = Brushes.Transparent
+        };
+        Canvas.SetLeft(rosette, 2.3);
+        Canvas.SetTop(rosette, 4.5);
+        medal.Children.Add(rosette);
+        var dot = new Ellipse { Width = 2, Height = 2, Fill = silver };
+        Canvas.SetLeft(dot, 4.9);
+        Canvas.SetTop(dot, 7);
+        medal.Children.Add(dot);
+        return medal;
     }
 
     private static FrameworkElement CreateIcon(bool rare)
@@ -204,14 +254,12 @@ internal sealed class ModernToastWindow : Window
         Canvas.SetLeft(iconCanvas, 6);
         Canvas.SetTop(iconCanvas, 8);
 
-        var borderColor = rare
-            ? new SolidColorBrush(Color.FromRgb(247, 192, 41))
-            : new SolidColorBrush(Color.FromRgb(76, 85, 99));
-        var frame = new Border
+        // There is NO ordinary blue icon frame, and NO solid gold rarity
+        // frame. The actual award bitmap will be supplied by a future catalog.
+        var image = new Border
         {
             Width = 48, Height = 48,
-            BorderThickness = new Thickness(rare ? 2 : 1),
-            BorderBrush = borderColor,
+            BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromRgb(13, 16, 22)),
             Child = new TextBlock
             {
@@ -224,31 +272,54 @@ internal sealed class ModernToastWindow : Window
                 VerticalAlignment = VerticalAlignment.Center
             }
         };
-        Canvas.SetLeft(frame, 3);
-        Canvas.SetTop(frame, 3);
+        Canvas.SetLeft(image, 3);
+        Canvas.SetTop(image, 3);
         if (rare)
         {
-            frame.Effect = new DropShadowEffect
+            // Community-style rotating, softly diffused gold highlight.
+            // Not claimed byte-for-byte equivalent to Steam's conic-gradient
+            // or rare-achievement mask CSS until native toast code is traced.
+            image.Effect = new DropShadowEffect
             {
-                Color = Color.FromRgb(255, 174, 22),
-                BlurRadius = 13,
+                Color = Color.FromRgb(255, 183, 32),
+                BlurRadius = 14,
                 ShadowDepth = 0,
                 Opacity = 0.85
             };
-            frame.BeginAnimation(OpacityProperty, new DoubleAnimation
+            var glints = new Canvas
             {
-                From = 0.65,
-                To = 1,
-                Duration = TimeSpan.FromMilliseconds(1100),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            });
+                Width = 54, Height = 54, IsHitTestVisible = false,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                Opacity = 0.65
+            };
+            for (var i = 0; i < 5; i++)
+            {
+                var angle = i * Math.PI * 2 / 5;
+                var glint = new Ellipse
+                {
+                    Width = 9, Height = 9,
+                    Fill = new RadialGradientBrush(
+                        Color.FromArgb(210, 255, 221, 90),
+                        Color.FromArgb(0, 255, 184, 78))
+                };
+                Canvas.SetLeft(glint, 27 + Math.Cos(angle) * 24 - 4.5);
+                Canvas.SetTop(glint, 27 + Math.Sin(angle) * 24 - 4.5);
+                glints.Children.Add(glint);
+            }
+            glints.RenderTransform = new RotateTransform();
+            glints.RenderTransform.BeginAnimation(RotateTransform.AngleProperty,
+                new DoubleAnimation(0, 360, new Duration(TimeSpan.FromSeconds(6)))
+                {
+                    RepeatBehavior = RepeatBehavior.Forever
+                });
+            iconCanvas.Children.Add(glints);
         }
-        iconCanvas.Children.Add(frame);
+        iconCanvas.Children.Add(image);
         return iconCanvas;
     }
 
-    internal void Apply(ModernToastFrame frame, double scale, Rect workArea)
+    internal void Apply(ModernToastFrame frame, double scale,
+        ForegroundWindowPlacement.Target target)
     {
         if (!double.IsFinite(scale) || scale <= 0) scale = 1;
         if (_scale != scale)
@@ -262,12 +333,16 @@ internal sealed class ModernToastWindow : Window
         Canvas.SetTop(_watermark,
             ModernWatermarkLayout.TopInsideCard(frame.WaveSize, frame.Slot));
 
-        Left = workArea.Right - Width;
-        Top = workArea.Bottom + frame.BottomRelativeY * scale;
+        // Native physical-pixel anchoring follows the foreground application's
+        // monitor. In windowed mode clip at visible window/work area; in
+        // fullscreen (including borderless) the monitor edge is used.
+        _lastOffsetDip = frame.BottomRelativeY;
+        target.Place(this, ModernToastScheduler.CardWidth,
+            ModernToastScheduler.CardHeight, scale, _lastOffsetDip);
 
-        // The taskbar must cover all pixels beneath WorkArea.Bottom, even if
-        // the separate WPF topmost HWND would otherwise paint over it.
-        var visible = Math.Clamp((workArea.Bottom - Top) / scale,
+        // Use unscaled logical design units for clipping. All cards in a wave
+        // start at the same invisible y=0 below the app and enter above it.
+        var visible = Math.Clamp(-frame.BottomRelativeY,
             0.0, ModernToastScheduler.CardHeight);
         _surface.Clip = new RectangleGeometry(new Rect(
             0, 0, ModernToastScheduler.CardWidth, visible));
@@ -281,6 +356,15 @@ internal sealed class ModernToastWindow : Window
         var flags = GetWindowLongPtr(hwnd, GwlExStyle).ToInt64();
         _ = SetWindowLongPtr(hwnd, GwlExStyle,
             new IntPtr(flags | WsExTransparent | WsExToolWindow | WsExNoActivate));
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            // WPF creates the HWND before the first device-pixel positioning
+            // pass; the host continues updating the physical anchor.
+            if (!IsLoaded) return;
+            var t = ForegroundWindowPlacement.Capture();
+            t.Place(this, ModernToastScheduler.CardWidth,
+                ModernToastScheduler.CardHeight, _scale, _lastOffsetDip);
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]

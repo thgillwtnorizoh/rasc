@@ -10,7 +10,8 @@ namespace Rasc.Desktop;
 
 /// <summary>
 /// Entire Classic stack is composed in ONE transparent topmost, click-through window.
-/// No Steam injection/overlay. Tested target is primary bottom-docked taskbar only.
+/// No Steam injection/overlay. P003-C03 tracks active foreground app bounds;
+/// mixed-DPI/true-exclusive-fullscreen runtime qualification remains pending.
 /// </summary>
 public partial class ClassicToastStackWindow : Window
 {
@@ -62,23 +63,28 @@ public partial class ClassicToastStackWindow : Window
     {
         _popupSizePercent = ClassicPresentationSettings.SupportedSizes.Contains(requestedPercent)
             ? requestedPercent : 0;
-        PositionOnPrimaryWorkArea();
+        PositionOnForegroundApp();
     }
 
-    public void PositionOnPrimaryWorkArea()
+    /// <summary>
+    /// Reanchor unchanged Classic artwork to foreground app bounds.
+    /// Fullscreen/borderless uses screen edges, not the taskbar work area.
+    /// </summary>
+    public void PositionOnForegroundApp()
     {
-        var work = SystemParameters.WorkArea;
-        _contentScale = ClassicPopupScale.Resolve(
-            SystemParameters.PrimaryScreenHeight, work.Width, work.Height,
+        var target = ForegroundWindowPlacement.Capture();
+        var proposedScale = target.Scale(
+            ClassicToastScheduler.CardWidth, ClassicToastScheduler.ViewportHeight,
             _popupSizePercent);
-
-        // Scale the exact accepted card artwork/typography uniformly. The
-        // host and every card still share one clipped coordinate surface.
-        Viewport.LayoutTransform = new ScaleTransform(_contentScale, _contentScale);
-        Width = ClassicToastScheduler.CardWidth * _contentScale;
-        Height = ClassicToastScheduler.ViewportHeight * _contentScale;
-        Left = work.Right - Width;
-        Top = work.Bottom - Height;
+        if (Math.Abs(_contentScale - proposedScale) > 1e-9)
+        {
+            _contentScale = proposedScale;
+            Viewport.LayoutTransform = new ScaleTransform(_contentScale, _contentScale);
+            Width = ClassicToastScheduler.CardWidth * _contentScale;
+            Height = ClassicToastScheduler.ViewportHeight * _contentScale;
+        }
+        target.Place(this, ClassicToastScheduler.CardWidth,
+            ClassicToastScheduler.ViewportHeight, _contentScale);
     }
 
     public void Apply(ClassicToastCard card, ClassicToastFrame frame)
@@ -162,6 +168,9 @@ public partial class ClassicToastStackWindow : Window
             flags | WsExTransparent | WsExToolWindow | WsExNoActivate));
         _hwndSource = HwndSource.FromHwnd(handle);
         _hwndSource?.AddHook(OnWindowMessage);
+        // Initial sizing may predate the actual HWND.
+        _ = Dispatcher.BeginInvoke(new Action(PositionOnForegroundApp),
+            System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private IntPtr OnWindowMessage(IntPtr hwnd, int msg, IntPtr wParam,
@@ -174,7 +183,7 @@ public partial class ClassicToastStackWindow : Window
             _ = Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (!IsLoaded) return;
-                PositionOnPrimaryWorkArea();
+                PositionOnForegroundApp();
                 DisplayMetricsChanged?.Invoke(this, EventArgs.Empty);
             }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
