@@ -18,9 +18,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic");
             return 2;
         }
         var scenario = args[0];
@@ -88,10 +88,13 @@ internal static class Program
                 var elapsed = clock.Elapsed.TotalMilliseconds;
                 try
                 {
-                    if (scenario == "classic-only")
+                    if (scenario is "classic-only" or "modern-idle-classic")
                     {
                         if (stage == 0)
                         {
+                            // A second discriminating fixture: switching the
+                            // selector without ever displaying Modern first.
+                            if (scenario == "modern-idle-classic") Select("Modern");
                             Select("Classic");
                             Click(preview);
                             stage++;
