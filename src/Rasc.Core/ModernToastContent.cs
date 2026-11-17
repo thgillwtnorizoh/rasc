@@ -12,22 +12,33 @@ public sealed record ModernToastContent(
     ModernToastKind Kind = ModernToastKind.Unlock,
     int Current = 0,
     int Maximum = 0,
-    bool IsRare = false)
+    bool IsRare = false,
+    int Minimum = 0)
 {
     public static ModernToastContent Unlock(string name, string description, bool isRare = false) =>
         new(Nonempty(name), description ?? "", ModernToastKind.Unlock, 0, 0, isRare);
 
-    public static ModernToastContent Progress(string name, int current, int maximum)
+    /// <summary>
+    /// Steam's progress component receives current, minimum and maximum:
+    /// the filled percentage is (current - minimum) / (maximum - minimum).
+    /// Current can be below minimum; the source UI clamps the bar to 0%.
+    /// The GT-610 persistence source supplies none of these live callbacks.
+    /// </summary>
+    public static ModernToastContent Progress(string name, int current, int maximum, int minimum = 0)
     {
         if (maximum <= 0) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (minimum < 0 || minimum >= maximum)
+            throw new ArgumentOutOfRangeException(nameof(minimum));
         if (current < 0 || current > maximum)
             throw new ArgumentOutOfRangeException(nameof(current));
-        return new(Nonempty(name), "", ModernToastKind.Progress, current, maximum);
+        return new(Nonempty(name), "", ModernToastKind.Progress,
+            current, maximum, false, minimum);
     }
 
     public double ProgressFraction =>
-        Kind == ModernToastKind.Progress && Maximum > 0
-            ? Math.Clamp((double)Current / Maximum, 0.0, 1.0) : 0.0;
+        Kind == ModernToastKind.Progress && Maximum > Minimum
+            ? Math.Clamp((double)(Current - Minimum) / (Maximum - Minimum), 0.0, 1.0)
+            : 0.0;
 
     public string NumericProgress =>
         Kind == ModernToastKind.Progress ? $"({Current}/{Maximum})" : "";

@@ -41,18 +41,18 @@
       <TextBlock Text="Popup profile" Margin="18,0,7,0" VerticalAlignment="Center"/>
       <ComboBox x:Name="ProfileBox" Width="105" VerticalAlignment="Center"
                 SelectionChanged="ProfileBox_SelectionChanged"
-                ToolTip="Applies to new events; existing popups finish in their original style.">
+                ToolTip="New events use the selected style. Existing popups finish first; the next style waits instead of overlapping windows.">
         <ComboBoxItem Content="Classic" Tag="Classic"/>
         <ComboBoxItem Content="Modern" Tag="Modern"/>
         <ComboBoxItem Content="Off" Tag="Off"/>
       </ComboBox>
-      <Button Content="Preview Unlock" Margin="12,0,0,0" Padding="13,9"
+      <Button x:Name="PreviewUnlockButton" Content="Preview Unlock" Margin="12,0,0,0" Padding="13,9"
               Click="PreviewClassic_Click"
               ToolTip="Uses the owner-supplied unlock screenshot text as a presentation-only fixture."/>
       <Button Content="Preview Rare" Margin="10,0,0,0" Padding="13,9"
               Click="PreviewRare_Click"
               ToolTip="Modern-only rare achievement golden-frame test; no GC or history changes."/>
-      <Button Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"
+      <Button x:Name="PreviewProgressButton" Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"
               Click="PreviewProgress_Click"
               ToolTip="Shows a test progress notification only; GT-610 does not persist progress callbacks."/>
       </WrapPanel>
@@ -65,7 +65,7 @@
           <ComboBoxItem Content="3 cards" Tag="3"/>
           <ComboBoxItem Content="6 cards" Tag="6"/>
         </ComboBox>
-        <Button Content="Preview wave" Margin="10,0,0,0" Padding="12,5"
+        <Button x:Name="PreviewModernWaveButton" Content="Preview wave" Margin="10,0,0,0" Padding="12,5"
                 Click="PreviewModernWave_Click"/>
       </WrapPanel>
       <WrapPanel Margin="0,10,0,0" Orientation="Horizontal" VerticalAlignment="Center">

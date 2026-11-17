@@ -57,7 +57,7 @@ public sealed class ModernToastWaveTests
         s.Advance(TimeSpan.FromSeconds(1));
         s.Enqueue(E(2));
         s.Enqueue(E(3));
-        Assert.Equal(1, s.Advance(TimeSpan.FromSeconds(3)).Count);
+        Assert.Single(s.Advance(TimeSpan.FromSeconds(3)));
         Assert.Equal(2, s.WaitingCount);
         var exiting = Assert.Single(s.Advance(TimeSpan.FromMilliseconds(5450)));
         Assert.Equal("wave-event-1", exiting.Event.EventId);
@@ -130,6 +130,17 @@ public sealed class ModernToastWaveTests
         Assert.Equal(ModernToastKind.Progress, progress.Kind);
         Assert.Equal("(19/50)", progress.NumericProgress);
         Assert.Equal(0.38, progress.ProgressFraction, 6);
+        // Recovered Steam UI progress bar uses configured minimum, not
+        // simply current/maximum. Text remains the literal current/maximum.
+        var threshold = ModernToastContent.Progress("Threshold", 19, 50, minimum: 10);
+        Assert.Equal("(19/50)", threshold.NumericProgress);
+        Assert.Equal(0.225, threshold.ProgressFraction, 6);
+        Assert.Equal(0, ModernToastContent.Progress("Below", 5, 50, minimum: 10).ProgressFraction);
+        Assert.Equal(1, ModernToastContent.Progress("Complete", 50, 50, minimum: 10).ProgressFraction);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ModernToastContent.Progress("Invalid", 19, 50, minimum: 50));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ModernToastContent.Progress("Invalid", 19, 50, minimum: -1));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             ModernToastContent.Progress("Impossible", -1, 50));
         Assert.Throws<ArgumentOutOfRangeException>(() =>

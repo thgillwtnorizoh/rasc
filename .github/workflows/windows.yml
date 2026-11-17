@@ -20,6 +20,18 @@ jobs:
         run: dotnet test tests/Rasc.Core.Tests/Rasc.Core.Tests.csproj --configuration Release --logger "trx;LogFileName=rasc.trx"
       - name: Compile native WPF app
         run: dotnet build src/Rasc.Desktop/Rasc.Desktop.csproj --configuration Release --no-incremental
+      - name: WPF real-window profile transition smoke
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- classic-only
+          if ($LASTEXITCODE -ne 0) { throw "Classic-only WPF smoke failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-idle-classic
+          if ($LASTEXITCODE -ne 0) { throw "Idle Modern-to-Classic WPF smoke failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-classic
+          if ($LASTEXITCODE -ne 0) { throw "Modern-to-Classic WPF smoke failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-progress
+          if ($LASTEXITCODE -ne 0) { throw "Modern progress-icon WPF smoke failed" }
       - name: Publish self-contained Windows x64
         run: dotnet publish src/Rasc.Desktop/Rasc.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/Rasc-Windows-x64 -p:PublishSingleFile=false
       - name: Upload Windows application
