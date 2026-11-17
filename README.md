@@ -2,7 +2,7 @@
 
 An independent Windows companion for displaying and browsing virtual Counter-Strike: Global Offensive achievements without representing them as Steam-published achievements.
 
-**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002 Classic first development slice AUTHORIZED by owner; modern renderer deferred.
+**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01 Classic desktop toast development build PASSED Windows CI (32/32); awaiting live GUI qualification and independent QA; modern renderer deferred.
 
 ## Scope and provenance
 
@@ -25,7 +25,7 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 - **P000:** Steam notification visual and runtime reference investigation. **OPEN**.
   - **P000-C01:** consolidate, independently verify, and publish classic/modern notification reference contracts, their provenance and discrepancies.
 - **P001:** native Windows foundation. **AUTHORIZED / DEVELOPMENT CHECKPOINT** — [Issue #2](https://github.com/thgillwtnorizoh/rasc/issues/2); development tests and Windows build passed, independent QA and owner acceptance pending.
-- **P002:** first **Steam Classic** desktop toast slice authorized for development under P000 source-based limits. Modern profile remains planned.
+- **P002:** **P002-C01 Steam Classic desktop toast development build published**, [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3); source-based dimensions/timing, provisional non-original runtime motion; modern profile remains planned.
 
 Research and checkpoint records belong under `research/P000/` when verified. Maintain recovery notes in-repository. Do not run old Steam client binaries or interact with the installed Steam client as part of static reference analysis.
 
@@ -47,3 +47,12 @@ All original-behavior claims must retain exact authority and confidence; do not 
 The app does not modify your CS:GO files or grant Steam achievements. Select the GT-610 `csgo_gc/achievements.txt` path manually. First observation of existing awards establishes a silent baseline; subsequent observed changes appear in the event history. Original classic/modern Steam popup renderers are not yet implemented.
 
 **Latest P001 runtime note:** Owner confirmed six live unlocks, then a restart without duplicate event rows. Owner reported an earlier ~5-second exit; the revised build was user-qualified with a prompt visible close and 24.3ms internally while actively monitoring. The cause of the old delay remains unknown. P001-D01 is RESOLVED for owner-observed runtime (not independent QA). See [P001-C01-C02 owner evidence](docs/P001/checkpoints/P001-C01-C02.md).
+
+## P002 — First Classic desktop notification (development)
+
+- [Windows x64 artifact](https://github.com/thgillwtnorizoh/rasc/actions/runs/44016161175/artifacts/14298872135) — compiled self-contained WPF app, **32/32 automated tests passing**. Preview popup is test-only; nothing is written to GC stats/achievement ledger by preview.
+- [P002-C01 guide](docs/P002/README.md) and [UEP checkpoint](docs/P002/checkpoints/P002-C01.md).
+- Classic source reference: `research/P000/classic/reference.md`. The first popup uses documented nominal layout and timing but intentionally **does not** claim original animation, asset, sound, in-game overlay or screenshot parity.
+- Existing achievements restored in the history list do **not** trigger new toasts; only newly observed unlock events may do so.
+
+P000/P001/P002 subsystems remain **OPEN** without owner acceptance or independent Work 1 QA. Do not report a WPF build as human GUI qualification.
