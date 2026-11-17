@@ -20,6 +20,13 @@ internal sealed class ClassicToastHost : IDisposable
     private readonly Dictionary<string, ClassicToastCard> _cards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Content> _text = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _holdWake;
+    private readonly ClassicAnimationFrameGate _frameGate = new();
+    private int _fpsCap;
+    private int _popupSizePercent;
+    private long _appliedAnimationUpdates;
+    private long _appliedIntervals;
+    private double _appliedIntervalSeconds;
+    private TimeSpan? _lastAppliedAt;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private ClassicToastStackWindow? _window;
     private bool _renderSubscribed;
@@ -36,6 +43,19 @@ internal sealed class ClassicToastHost : IDisposable
     {
         _holdWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher);
         _holdWake.Tick += OnHoldWake;
+    }
+
+    internal void SetSettings(ClassicPresentationSettings settings)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var valid = settings.Validated();
+        if (_fpsCap == valid.AnimationFps && _popupSizePercent == valid.PopupSizePercent)
+            return;
+        _fpsCap = valid.AnimationFps;
+        _popupSizePercent = valid.PopupSizePercent;
+        _frameGate.Reset();
+        _window?.SetPopupSizePercent(_popupSizePercent);
+        Tick(); // Immediately relayout any visible stack, no new unlock is generated.
     }
 
     internal void Enqueue(UnlockEvent evt) =>
@@ -90,6 +110,14 @@ internal sealed class ClassicToastHost : IDisposable
         }
         _previousCallbackAt = at;
         _renderCallbacks++;
+        if (!_frameGate.ShouldApply(at, _fpsCap)) return;
+        if (_lastAppliedAt is { } previous && at > previous)
+        {
+            _appliedIntervals++;
+            _appliedIntervalSeconds += (at - previous).TotalSeconds;
+        }
+        _lastAppliedAt = at;
+        _appliedAnimationUpdates++;
         Tick();
     }
 
@@ -105,6 +133,8 @@ internal sealed class ClassicToastHost : IDisposable
         if (_renderSubscribed) return;
         _previousRenderTime = null;
         _previousCallbackAt = null;
+        _lastAppliedAt = null;
+        _frameGate.Reset();
         _animationSegments++;
         CompositionTarget.Rendering += OnRendering;
         _renderSubscribed = true;
@@ -117,6 +147,8 @@ internal sealed class ClassicToastHost : IDisposable
         _renderSubscribed = false;
         _previousRenderTime = null;
         _previousCallbackAt = null;
+        _lastAppliedAt = null;
+        _frameGate.Reset();
     }
 
     private void SleepUntilNextExpiry()
@@ -153,7 +185,7 @@ internal sealed class ClassicToastHost : IDisposable
             if (_window is null)
             {
                 _window = new ClassicToastStackWindow();
-                _window.PositionOnPrimaryWorkArea();
+                _window.SetPopupSizePercent(_popupSizePercent);
                 _window.Show();
             }
             foreach (var frame in frames)
@@ -198,9 +230,18 @@ internal sealed class ClassicToastHost : IDisposable
             File.WriteAllText(Path.Combine(folder, "last-classic-animation.txt"),
                 "RASC Classic animation callback diagnostics (NOT physical presentation FPS)" +
                 Environment.NewLine +
+                "FPS cap (0 = display-synced): " + _fpsCap + Environment.NewLine +
+                "Popup size percent (0 = Auto): " + _popupSizePercent + Environment.NewLine +
                 "Animation segments: " + _animationSegments + Environment.NewLine +
                 "Unique WPF Rendering callbacks: " + _renderCallbacks + Environment.NewLine +
                 "Callback intervals sampled: " + _validIntervals + Environment.NewLine +
+                "Applied animation visual updates: " + _appliedAnimationUpdates + Environment.NewLine +
+                "Applied update intervals sampled: " + _appliedIntervals + Environment.NewLine +
+                "Average applied update rate (not displayed FPS): " +
+                (_appliedIntervals > 0 && _appliedIntervalSeconds > 0
+                    ? (_appliedIntervals / _appliedIntervalSeconds)
+                        .ToString("F1", CultureInfo.InvariantCulture)
+                    : "NOT MEASURED") + Environment.NewLine +
                 "Average render callback rate (fps approximation): " + fps + Environment.NewLine +
                 "Longest callback interval (ms): " +
                 _maxFrameIntervalMilliseconds.ToString("F2", CultureInfo.InvariantCulture) +

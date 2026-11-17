@@ -26,6 +26,12 @@ public partial class ClassicToastStackWindow : Window
     // Background only is extended; icon, text and the accepted visual
     // dimensions/proportions remain completely unchanged.
     private readonly Dictionary<ClassicToastCard, Rectangle> _backplates = new();
+    private int _popupSizePercent;
+    private double _contentScale = 1;
+    private HwndSource? _hwndSource;
+    private const int WmDpiChanged = 0x02E0;
+    private const int WmDisplayChange = 0x007E;
+    private const int WmSettingChange = 0x001A;
     private static readonly Brush BackplateBrush = CreateBackplateBrush();
 
     private static Brush CreateBackplateBrush()
@@ -50,11 +56,27 @@ public partial class ClassicToastStackWindow : Window
         InitializeComponent();
     }
 
+    public void SetPopupSizePercent(int requestedPercent)
+    {
+        _popupSizePercent = ClassicPresentationSettings.SupportedSizes.Contains(requestedPercent)
+            ? requestedPercent : 0;
+        PositionOnPrimaryWorkArea();
+    }
+
     public void PositionOnPrimaryWorkArea()
     {
         var work = SystemParameters.WorkArea;
-        Left = work.Right - ClassicToastScheduler.CardWidth;
-        Top = work.Bottom - ClassicToastScheduler.ViewportHeight;
+        _contentScale = ClassicPopupScale.Resolve(
+            SystemParameters.PrimaryScreenHeight, work.Width, work.Height,
+            _popupSizePercent);
+
+        // Scale the exact accepted card artwork/typography uniformly. The
+        // host and every card still share one clipped coordinate surface.
+        Viewport.LayoutTransform = new ScaleTransform(_contentScale, _contentScale);
+        Width = ClassicToastScheduler.CardWidth * _contentScale;
+        Height = ClassicToastScheduler.ViewportHeight * _contentScale;
+        Left = work.Right - Width;
+        Top = work.Bottom - Height;
     }
 
     public void Apply(ClassicToastCard card, ClassicToastFrame frame)
@@ -62,8 +84,12 @@ public partial class ClassicToastStackWindow : Window
         if (!Viewport.Children.Contains(card)) Viewport.Children.Add(card);
         // Snap the moving card to physical pixels, then align its clip in the
         // same physical coordinate system to avoid a one-pixel exposed edge.
-        var dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleY;
-        if (dpiScale <= 0 || !double.IsFinite(dpiScale)) dpiScale = 1;
+        // Card coordinates are unscaled 240x282 design units. WPF's
+        // LayoutTransform multiplies by the user's size setting; physical
+        // pixel snapping must use the PRODUCT of UI scale and Windows DPI.
+        var systemDpi = VisualTreeHelper.GetDpi(this).DpiScaleY;
+        if (systemDpi <= 0 || !double.IsFinite(systemDpi)) systemDpi = 1;
+        var dpiScale = systemDpi * _contentScale;
         // Shared physical-pixel edge quantization. The upper card's bottom
         // and the lower card's top are projected from the same screen-space
         // seam, rather than separately rounded local translations/clips.
@@ -132,6 +158,28 @@ public partial class ClassicToastStackWindow : Window
         var flags = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
         _ = SetWindowLongPtr(handle, GwlExStyle, new IntPtr(
             flags | WsExTransparent | WsExToolWindow | WsExNoActivate));
+        _hwndSource = HwndSource.FromHwnd(handle);
+        _hwndSource?.AddHook(OnWindowMessage);
+    }
+
+    private IntPtr OnWindowMessage(IntPtr hwnd, int msg, IntPtr wParam,
+        IntPtr lParam, ref bool handled)
+    {
+        if (msg is WmDpiChanged or WmDisplayChange or WmSettingChange)
+        {
+            // WPF processes the DPI change first. Reanchor afterwards using
+            // current primary work-area and logical display dimensions.
+            _ = Dispatcher.BeginInvoke(new Action(PositionOnPrimaryWorkArea),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+        return IntPtr.Zero;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _hwndSource?.RemoveHook(OnWindowMessage);
+        _hwndSource = null;
+        base.OnClosed(e);
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]

@@ -32,7 +32,8 @@
       <Button Grid.Column="1" Content="Browse..." Margin="10,23,0,0"
               Padding="14,5" MinWidth="93" Click="Browse_Click"/>
     </Grid>
-    <WrapPanel Grid.Row="4" Orientation="Horizontal">
+    <StackPanel Grid.Row="4">
+      <WrapPanel Orientation="Horizontal">
       <Button x:Name="StartButton" Content="Start monitoring" Padding="18,9"
               Click="Start_Click"/>
       <Button x:Name="StopButton" Content="Stop" IsEnabled="False"
@@ -45,7 +46,32 @@
       <Button Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"
               Click="PreviewProgress_Click"
               ToolTip="Shows a test progress notification only; GT-610 does not persist progress callbacks."/>
-    </WrapPanel>
+      <WrapPanel Margin="0,10,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBlock VerticalAlignment="Center" Text="Animation FPS" Margin="0,0,8,0"/>
+        <ComboBox x:Name="AnimationFpsBox" Width="154" SelectionChanged="AnimationFpsBox_SelectionChanged"
+                  ToolTip="Display-synced uses every WPF render opportunity. Numbers are maximum update rates; actual displayed FPS is not guaranteed.">
+          <ComboBoxItem Content="Display-synced" Tag="0"/>
+          <ComboBoxItem Content="30 FPS cap" Tag="30"/>
+          <ComboBoxItem Content="60 FPS cap" Tag="60"/>
+          <ComboBoxItem Content="90 FPS cap" Tag="90"/>
+          <ComboBoxItem Content="120 FPS cap" Tag="120"/>
+          <ComboBoxItem Content="144 FPS cap" Tag="144"/>
+          <ComboBoxItem Content="165 FPS cap" Tag="165"/>
+          <ComboBoxItem Content="240 FPS cap" Tag="240"/>
+        </ComboBox>
+        <TextBlock VerticalAlignment="Center" Text="Popup size" Margin="22,0,8,0"/>
+        <ComboBox x:Name="PopupSizeBox" Width="154" SelectionChanged="PopupSizeBox_SelectionChanged"
+                  ToolTip="Auto adjusts for resolution and Windows DPI; manual percentages uniformly scale the accepted Classic design.">
+          <ComboBoxItem Content="Auto (screen-aware)" Tag="0"/>
+          <ComboBoxItem Content="100%" Tag="100"/>
+          <ComboBoxItem Content="125%" Tag="125"/>
+          <ComboBoxItem Content="150%" Tag="150"/>
+          <ComboBoxItem Content="175%" Tag="175"/>
+          <ComboBoxItem Content="200%" Tag="200"/>
+          <ComboBoxItem Content="250%" Tag="250"/>
+        </ComboBox>
+      </WrapPanel>
+    </StackPanel>
     <Grid Grid.Row="6">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
@@ -66,7 +92,7 @@
       <TextBlock x:Name="StatusText" FontWeight="SemiBold" Text="Idle — choose the GC file to begin."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
-                 Text="On first monitoring, existing achievements become the baseline without new popups. Missing or malformed files never erase the checkpoint. Classic popups are a P002 visual target under qualification. No Steam integration, historical popup replay, or durable progress callbacks. Preview buttons do not change your GC file/history."/>
+                 Text="On first monitoring, existing achievements become the baseline without new popups. Appearance preferences save to local RASC settings; FPS caps do not alter unlock timing. Preview buttons never grant awards or modify the GC file/history."/>
     </StackPanel>
   </Grid>
 </Window>

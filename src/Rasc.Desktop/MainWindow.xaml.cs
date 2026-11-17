@@ -14,6 +14,9 @@ public partial class MainWindow : Window
     private readonly string _localDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RASC");
     private readonly ClassicToastHost _classicToasts;
+    private readonly ClassicPresentationSettingsStore _presentationStore;
+    private ClassicPresentationSettings _presentationSettings;
+    private bool _presentationControlsReady;
     private UnlockEventStore? _store;
     private AchievementMonitor? _monitor;
     private bool _canClose;
@@ -22,7 +25,14 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _presentationStore = new ClassicPresentationSettingsStore(
+            Path.Combine(_localDirectory, "appearance.json"));
+        _presentationSettings = _presentationStore.Load();
         _classicToasts = new ClassicToastHost(Dispatcher);
+        _classicToasts.SetSettings(_presentationSettings);
+        SelectAppearancePreference(AnimationFpsBox, _presentationSettings.AnimationFps);
+        SelectAppearancePreference(PopupSizeBox, _presentationSettings.PopupSizePercent);
+        _presentationControlsReady = true;
         RecentList.ItemsSource = _history;
         PathBox.Text = LoadLastPath();
         Closing += OnClosing;
@@ -159,6 +169,48 @@ public partial class MainWindow : Window
             // Avoid re-entering Window.Close during the initial Closing callback.
             _ = Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.Normal);
         }
+    }
+
+    private static void SelectAppearancePreference(
+        System.Windows.Controls.ComboBox box, int value)
+    {
+        foreach (var item in box.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+        {
+            if (int.TryParse(item.Tag?.ToString(), out var parsed) && parsed == value)
+            {
+                box.SelectedItem = item;
+                return;
+            }
+        }
+        box.SelectedIndex = 0;
+    }
+
+    private void AnimationFpsBox_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_presentationControlsReady) return;
+        var item = AnimationFpsBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
+        if (!int.TryParse(item?.Tag?.ToString(), out var selected)) return;
+        UpdatePresentationSettings(_presentationSettings with { AnimationFps = selected });
+    }
+
+    private void PopupSizeBox_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_presentationControlsReady) return;
+        var item = PopupSizeBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
+        if (!int.TryParse(item?.Tag?.ToString(), out var selected)) return;
+        UpdatePresentationSettings(_presentationSettings with { PopupSizePercent = selected });
+    }
+
+    private void UpdatePresentationSettings(ClassicPresentationSettings requested)
+    {
+        var valid = requested.Validated();
+        if (valid == _presentationSettings) return;
+        _presentationSettings = valid;
+        _classicToasts.SetSettings(valid);
+        if (!_presentationStore.TrySave(valid))
+            StatusText.Text = "Appearance updated for this session; failed to save settings.";
     }
 
     private void PreviewClassic_Click(object sender, RoutedEventArgs e)
