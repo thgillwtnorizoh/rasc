@@ -67,24 +67,41 @@ public partial class ClassicToastStackWindow : Window
     }
 
     /// <summary>
-    /// Reanchor unchanged Classic artwork to foreground app bounds.
-    /// Fullscreen/borderless uses screen edges, not the taskbar work area.
+    /// C03-C01 correction: preserve the accepted pre-C03 desktop anchor,
+    /// size and work-area behavior UNLESS a focused window covers the entire
+    /// monitor (exclusive/borderless fullscreen). Never anchor inside
+    /// ordinary foreground applications.
     /// </summary>
     public void PositionOnForegroundApp()
     {
-        var target = ForegroundWindowPlacement.Capture();
-        var proposedScale = target.Scale(
-            ClassicToastScheduler.CardWidth, ClassicToastScheduler.ViewportHeight,
-            _popupSizePercent);
+        var fullscreen = ForegroundWindowPlacement.CaptureFullscreen();
+        var work = SystemParameters.WorkArea;
+        var proposedScale = fullscreen is { } target
+            ? target.ClassicScale(_popupSizePercent)
+            : ClassicPopupScale.Resolve(
+                SystemParameters.PrimaryScreenHeight,
+                work.Width, work.Height, _popupSizePercent);
+
         if (Math.Abs(_contentScale - proposedScale) > 1e-9)
         {
             _contentScale = proposedScale;
             Viewport.LayoutTransform = new ScaleTransform(_contentScale, _contentScale);
-            Width = ClassicToastScheduler.CardWidth * _contentScale;
-            Height = ClassicToastScheduler.ViewportHeight * _contentScale;
         }
-        target.Place(this, ClassicToastScheduler.CardWidth,
-            ClassicToastScheduler.ViewportHeight, _contentScale);
+
+        // These are the old exact Classic dimensions, including its
+        // approved three-card viewport and clipping semantics.
+        Width = ClassicToastScheduler.CardWidth * _contentScale;
+        Height = ClassicToastScheduler.ViewportHeight * _contentScale;
+        if (fullscreen is { } fs)
+        {
+            fs.Place(this, ClassicToastScheduler.CardWidth,
+                ClassicToastScheduler.ViewportHeight, _contentScale);
+        }
+        else
+        {
+            Left = work.Right - Width;
+            Top = work.Bottom - Height;
+        }
     }
 
     public void Apply(ClassicToastCard card, ClassicToastFrame frame)

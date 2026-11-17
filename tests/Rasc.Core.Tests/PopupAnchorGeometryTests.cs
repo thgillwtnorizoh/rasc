@@ -18,13 +18,15 @@ public sealed class PopupAnchorGeometryTests
     }
 
     [Fact]
-    public void WindowedAppAnchorsToVisibleWindowBounds()
+    public void WindowedAndMaximizedAppsKeepLegacyDesktopTaskbarAnchor()
     {
         var app = new PopupRect(300, 200, 1280, 800);
-        Assert.Equal(app, PopupAnchorGeometry.Resolve(app, Monitor, Work, true));
+        Assert.Equal(Work, PopupAnchorGeometry.Resolve(app, Monitor, Work, true));
         var crossingTaskbar = new PopupRect(100, 1100, 900, 300);
-        Assert.Equal(new PopupRect(100, 1100, 900, 292),
-            PopupAnchorGeometry.Resolve(crossingTaskbar, Monitor, Work, true));
+        Assert.Equal(Work, PopupAnchorGeometry.Resolve(crossingTaskbar, Monitor, Work, true));
+        // A normal maximized app covers the work area, not full monitor.
+        Assert.False(PopupAnchorGeometry.IsFullscreen(Work, Monitor, true));
+        Assert.Equal(Work, PopupAnchorGeometry.Resolve(Work, Monitor, Work, true));
     }
 
     [Fact]
@@ -42,7 +44,7 @@ public sealed class PopupAnchorGeometryTests
         var mon = new PopupRect(-1920, -100, 1920, 1080);
         var work = new PopupRect(-1920, -100, 1920, 1040);
         var app = new PopupRect(-1600, 25, 1000, 600);
-        Assert.Equal(app, PopupAnchorGeometry.Resolve(app, mon, work, true));
+        Assert.Equal(work, PopupAnchorGeometry.Resolve(app, mon, work, true));
         Assert.Equal(mon, PopupAnchorGeometry.Resolve(mon, mon, work, true));
     }
 
@@ -80,6 +82,18 @@ public sealed class PopupAnchorGeometryTests
             PopupAnchorGeometry.Position(Monitor, double.NaN, 240, 94, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             PopupAnchorGeometry.Position(Monitor, 1, 240, 94, 1, double.PositiveInfinity));
+    }
+
+    [Fact]
+    public void FullscreenSelectionRequiresFocusedVisibleMonitorCoverage()
+    {
+        Assert.False(PopupAnchorGeometry.IsFullscreen(Monitor, Monitor, false));
+        Assert.False(PopupAnchorGeometry.IsFullscreen(
+            new PopupRect(0, 0, 2559, 1392), Monitor, true));
+        Assert.True(PopupAnchorGeometry.IsFullscreen(
+            new PopupRect(-1, -1, 2562, 1442), Monitor, true));
+        Assert.Equal(Work, PopupAnchorGeometry.Resolve(
+            new PopupRect(0, 0, 2559, 1392), Monitor, Work, true));
     }
 
     [Fact]

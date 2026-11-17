@@ -16,28 +16,34 @@ public readonly record struct PopupRect(double Left, double Top, double Width, d
 public static class PopupAnchorGeometry
 {
     /// <summary>
-    /// A true borderless/fullscreen window occupies its monitor, including the
-    /// taskbar strip. Otherwise constrain its visible bounds to the usable
-    /// monitor area, so popups never overrun a normal desktop taskbar.
+    /// A fullscreen or borderless fullscreen foreground window covers its
+    /// entire monitor including the taskbar strip. Ordinary maximized apps
+    /// only cover the work area and must NOT trigger fullscreen mode.
+    /// </summary>
+    public static bool IsFullscreen(PopupRect foreground, PopupRect monitor,
+        bool foregroundValid)
+    {
+        if (!monitor.IsValid) throw new ArgumentException("Invalid monitor.", nameof(monitor));
+        if (!foregroundValid || !foreground.IsValid) return false;
+        // Tolerate the 1-2 pixel DWM border uncertainty.
+        return foreground.Left <= monitor.Left + 2 &&
+            foreground.Top <= monitor.Top + 2 &&
+            foreground.Right >= monitor.Right - 2 &&
+            foreground.Bottom >= monitor.Bottom - 2;
+    }
+
+    /// <summary>
+    /// Critical C03-C01 contract: ONLY full-coverage focused applications
+    /// move the toast to the monitor edge. Every other case uses the SAME
+    /// pre-C03 desktop work area, regardless of window size or location.
     /// </summary>
     public static PopupRect Resolve(PopupRect foreground, PopupRect monitor,
         PopupRect workArea, bool foregroundValid)
     {
-        if (!monitor.IsValid || !workArea.IsValid) throw new ArgumentException("Monitor rectangles must be valid.");
-        if (!foregroundValid || !foreground.IsValid) return workArea;
-        // Allow a 2-unit tolerance for rounded operating-system boundaries.
-        var fullscreen = foreground.Left <= monitor.Left + 2
-            && foreground.Top <= monitor.Top + 2
-            && foreground.Right >= monitor.Right - 2
-            && foreground.Bottom >= monitor.Bottom - 2;
-        if (fullscreen) return monitor;
-        var left = Math.Max(foreground.Left, workArea.Left);
-        var top = Math.Max(foreground.Top, workArea.Top);
-        var right = Math.Min(foreground.Right, workArea.Right);
-        var bottom = Math.Min(foreground.Bottom, workArea.Bottom);
-        return right > left && bottom > top
-            ? new PopupRect(left, top, right - left, bottom - top)
-            : workArea;
+        if (!monitor.IsValid || !workArea.IsValid)
+            throw new ArgumentException("Monitor rectangles must be valid.");
+        return IsFullscreen(foreground, monitor, foregroundValid)
+            ? monitor : workArea;
     }
 
     /// <summary>
