@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<UnlockRow> _history = [];
     private readonly string _localDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RASC");
+    private readonly ClassicToastHost _classicToasts;
     private UnlockEventStore? _store;
     private AchievementMonitor? _monitor;
     private bool _canClose;
@@ -21,6 +22,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _classicToasts = new ClassicToastHost(Dispatcher);
         RecentList.ItemsSource = _history;
         PathBox.Text = LoadLastPath();
         Closing += OnClosing;
@@ -67,6 +69,9 @@ public partial class MainWindow : Window
                 _history.Insert(0, new UnlockRow(item.AchievementId,
                     item.ObservedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")));
                 while (_history.Count > 300) _history.RemoveAt(_history.Count - 1);
+                // Rehydrated historical rows do NOT enter the presentation queue.
+                // This callback runs only for newly observed/pending delivery events.
+                if (ClassicPopupsCheck.IsChecked == true) _classicToasts.Enqueue(item);
             });
             _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(() => StatusText.Text = message);
             await _monitor.StartAsync();
@@ -128,6 +133,17 @@ public partial class MainWindow : Window
         {
             try
             {
+                ShutdownTrace.Mark("ClassicToastHost.Dispose begin");
+                _classicToasts.Dispose();
+                ShutdownTrace.Mark("ClassicToastHost.Dispose complete");
+            }
+            catch (Exception ex)
+            {
+                ShutdownTrace.Mark("ClassicToastHost dispose error: " + ex.GetType().Name);
+            }
+
+            try
+            {
                 ShutdownTrace.Mark("SQLite.Dispose begin");
                 _store?.Dispose();
                 _store = null;
@@ -143,6 +159,12 @@ public partial class MainWindow : Window
             // Avoid re-entering Window.Close during the initial Closing callback.
             _ = Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.Normal);
         }
+    }
+
+    private void PreviewClassic_Click(object sender, RoutedEventArgs e)
+    {
+        // Explicit non-persistent presentation fixture: never enters the GC or SQLite store.
+        _classicToasts.Preview();
     }
 
     private sealed record UnlockRow(string AchievementId, string Observed);
