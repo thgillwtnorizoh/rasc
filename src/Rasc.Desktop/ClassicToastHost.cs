@@ -51,6 +51,8 @@ internal sealed class ClassicToastHost : IDisposable
         _anchorWake.Tick += OnAnchorWake;
     }
 
+    internal bool IsIdle => _schedule.IsIdle && _cards.Count == 0 && _window is null;
+
     internal void SetSettings(ClassicPresentationSettings settings)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

@@ -30,6 +30,7 @@ public partial class ClassicToastStackWindow : Window
     private int _popupSizePercent;
     private double _contentScale = 1;
     private HwndSource? _hwndSource;
+    private bool _closed;
     private const int WmDpiChanged = 0x02E0;
     private const int WmDisplayChange = 0x007E;
     private const int WmSettingChange = 0x001A;
@@ -186,8 +187,10 @@ public partial class ClassicToastStackWindow : Window
         _hwndSource = HwndSource.FromHwnd(handle);
         _hwndSource?.AddHook(OnWindowMessage);
         // Initial sizing may predate the actual HWND.
-        _ = Dispatcher.BeginInvoke(new Action(PositionOnForegroundApp),
-            System.Windows.Threading.DispatcherPriority.Loaded);
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_closed && IsVisible) PositionOnForegroundApp();
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private IntPtr OnWindowMessage(IntPtr hwnd, int msg, IntPtr wParam,
@@ -199,7 +202,7 @@ public partial class ClassicToastStackWindow : Window
             // current primary work-area and logical display dimensions.
             _ = Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (!IsLoaded) return;
+                if (_closed || !IsVisible) return;
                 PositionOnForegroundApp();
                 DisplayMetricsChanged?.Invoke(this, EventArgs.Empty);
             }), System.Windows.Threading.DispatcherPriority.Loaded);
@@ -209,6 +212,7 @@ public partial class ClassicToastStackWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
         _hwndSource?.RemoveHook(OnWindowMessage);
         _hwndSource = null;
         base.OnClosed(e);

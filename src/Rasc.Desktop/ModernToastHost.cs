@@ -49,6 +49,8 @@ internal sealed class ModernToastHost : IDisposable
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
+    internal bool IsIdle => _schedule.IsIdle && _windows.Count == 0 && !_batchWake.IsEnabled;
+
     internal void SetSettings(ClassicPresentationSettings settings)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

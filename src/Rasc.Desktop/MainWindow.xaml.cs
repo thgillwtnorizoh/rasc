@@ -15,6 +15,8 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RASC");
     private readonly ClassicToastHost _classicToasts;
     private readonly ModernToastHost _modernToasts;
+    private readonly NotificationPresentationGate _presentationGate;
+    private readonly DispatcherTimer _presentationWake;
     private readonly NotificationProfileStore _profileStore;
     private NotificationProfile _profile;
     private bool _profileControlsReady;
@@ -34,6 +36,22 @@ public partial class MainWindow : Window
         _presentationSettings = _presentationStore.Load();
         _classicToasts = new ClassicToastHost(Dispatcher);
         _modernToasts = new ModernToastHost(Dispatcher);
+        _presentationGate = new NotificationPresentationGate(profile => profile switch
+        {
+            NotificationProfile.Classic => _classicToasts.IsIdle,
+            NotificationProfile.Modern => _modernToasts.IsIdle,
+            _ => true
+        });
+        _presentationWake = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(75)
+        };
+        _presentationWake.Tick += (_, _) =>
+        {
+            _presentationGate.Pump();
+            if (_presentationGate.PendingCount == 0)
+                _presentationWake.Stop();
+        };
         _classicToasts.SetSettings(_presentationSettings);
         _modernToasts.SetSettings(_presentationSettings);
         _profileStore = new NotificationProfileStore(
@@ -99,12 +117,11 @@ public partial class MainWindow : Window
                 while (_history.Count > 300) _history.RemoveAt(_history.Count - 1);
                 // Rehydrated historical rows do NOT enter the presentation queue.
                 // This callback runs only for newly observed/pending delivery events.
-                switch (_profile)
-                {
-                    case NotificationProfile.Classic: _classicToasts.Enqueue(item); break;
-                    case NotificationProfile.Modern: _modernToasts.Enqueue(item); break;
-                    case NotificationProfile.Off: break;
-                }
+                var destination = _profile;
+                if (destination == NotificationProfile.Classic)
+                    QueuePresentation(destination, () => _classicToasts.Enqueue(item));
+                else if (destination == NotificationProfile.Modern)
+                    QueuePresentation(destination, () => _modernToasts.Enqueue(item));
             });
             _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(() => StatusText.Text = message);
             await _monitor.StartAsync();
@@ -164,6 +181,8 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _presentationWake.Stop();
+            _presentationGate.Clear();
             try
             {
                 ShutdownTrace.Mark("ClassicToastHost.Dispose begin");
@@ -299,13 +318,30 @@ public partial class MainWindow : Window
             StatusText.Text = "Popup profile changed this session, but could not be saved.";
     }
 
+    private void QueuePresentation(NotificationProfile profile, Action show)
+    {
+        _presentationGate.Enqueue(profile, show);
+        if (_presentationGate.PendingCount > 0)
+        {
+            _presentationWake.Start();
+            StatusText.Text = "Preview/event queued until the previous notification style finishes.";
+        }
+        else _presentationWake.Stop();
+    }
+
     private void PreviewClassic_Click(object sender, RoutedEventArgs e)
     {
         switch (_profile)
         {
-            case NotificationProfile.Classic: _classicToasts.PreviewUnlock(); break;
-            case NotificationProfile.Modern: _modernToasts.PreviewUnlock(); break;
-            case NotificationProfile.Off: StatusText.Text = "Popups are disabled."; break;
+            case NotificationProfile.Classic:
+                QueuePresentation(NotificationProfile.Classic, _classicToasts.PreviewUnlock);
+                break;
+            case NotificationProfile.Modern:
+                QueuePresentation(NotificationProfile.Modern, _modernToasts.PreviewUnlock);
+                break;
+            case NotificationProfile.Off:
+                StatusText.Text = "Popups are disabled.";
+                break;
         }
     }
 
@@ -318,12 +354,13 @@ public partial class MainWindow : Window
         }
         var item = PreviewWaveCountBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
         if (int.TryParse(item?.Tag?.ToString(), out var count))
-            _modernToasts.PreviewWave(count);
+            QueuePresentation(NotificationProfile.Modern, () => _modernToasts.PreviewWave(count));
     }
 
     private void PreviewRare_Click(object sender, RoutedEventArgs e)
     {
-        if (_profile == NotificationProfile.Modern) _modernToasts.PreviewRare();
+        if (_profile == NotificationProfile.Modern)
+            QueuePresentation(NotificationProfile.Modern, _modernToasts.PreviewRare);
         else StatusText.Text = "Rare preview requires the Modern profile.";
     }
 
@@ -332,8 +369,12 @@ public partial class MainWindow : Window
         // Display-only fixture; no fabricated GC callbacks or SQLite updates.
         switch (_profile)
         {
-            case NotificationProfile.Classic: _classicToasts.PreviewProgress(); break;
-            case NotificationProfile.Modern: _modernToasts.PreviewProgress(); break;
+            case NotificationProfile.Classic:
+                QueuePresentation(NotificationProfile.Classic, _classicToasts.PreviewProgress);
+                break;
+            case NotificationProfile.Modern:
+                QueuePresentation(NotificationProfile.Modern, _modernToasts.PreviewProgress);
+                break;
             case NotificationProfile.Off: StatusText.Text = "Popups are disabled."; break;
         }
     }
