@@ -1,6 +1,6 @@
 # P003-C01 — Modern Steam-style desktop achievement notifications
 
-**Status:** DEVELOPMENT CANDIDATE; NOT VERIFIED until an exact-SHA Windows Actions run passes. NOT independently verified, NOT runtime qualified, NOT owner-accepted.
+**Status:** VERIFIED DEVELOPMENT CHECKPOINT — exact-source Windows CI passed at 2acebb8c43df58841fbf309fcaf8272f7d3fecf0 (117/117 tests, 0 WPF compiler warnings/errors, self-contained x64 artifact). NOT independently verified, NOT runtime qualified, NOT owner-accepted. See [checkpoint](checkpoints/P003-C01.md).
 
 **Starting main:** 425444dc7440163ec8b3f74ee0ad9c360d5896fd.
 **Actor:** Work 2 implementation. **Campaign:** P003 — Modern desktop notifications. **Research authority:** [P000 modern reference](../../research/P000/modern/reference.md), [renderer-neutral contract](../../research/P000/comparison/renderer-contract.md).

@@ -2,7 +2,7 @@
 
 An independent Windows companion for displaying and browsing virtual Counter-Strike: Global Offensive achievements without representing them as Steam-published achievements.
 
-**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 adjustable FPS and DPI/resolution-aware popup sizing PASSED Windows CI (105/105); owner-approved Classic card design preserved, new controls awaiting Windows GUI qualification; independent QA and P002 subsystem acceptance pending.
+**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 Modern normal desktop renderer and profile selector passed Windows CI 117/117 at implementation SHA 2acebb8c43df58841fbf309fcaf8272f7d3fecf0; Modern runtime/independent QA and subsystem owner acceptance remain OPEN.
 
 ## Scope and provenance
 
@@ -25,7 +25,7 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 - **P000:** Steam notification visual and runtime reference investigation. **OPEN**.
   - **P000-C01:** consolidate, independently verify, and publish classic/modern notification reference contracts, their provenance and discrepancies.
 - **P001:** native Windows foundation. **AUTHORIZED / DEVELOPMENT CHECKPOINT** — [Issue #2](https://github.com/thgillwtnorizoh/rasc/issues/2); development tests and Windows build passed, independent QA and owner acceptance pending.
-- **P002:** Classic first renderer **P002-C01**, slide correction **C01**, font calibration **C02**, display-paced/seam correction **C03**, and display preferences/DPI scaling **C04** published, [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3). Its exact original animation/font raster remains **UNVERIFIED**, despite passing CI; modern profile remains planned.
+- **P002:** Classic first renderer **P002-C01**, slide correction **C01**, font calibration **C02**, display-paced/seam correction **C03**, and display preferences/DPI scaling **C04** published, [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3). Its exact original animation/font raster remains **UNVERIFIED**, despite passing CI; modern normal desktop profile implemented as a P003 development checkpoint; runtime and exact original parity unverified.
 
 Research and checkpoint records belong under `research/P000/` when verified. Maintain recovery notes in-repository. Do not run old Steam client binaries or interact with the installed Steam client as part of static reference analysis.
 
@@ -44,7 +44,7 @@ All original-behavior claims must retain exact authority and confidence; do not 
 - [P001-C01 checkpoint](docs/P001/checkpoints/P001-C01.md) — exact tested SHA, Windows CI artifact, testing and limitations.
 - [Windows Actions artifact (self-contained x64)](https://github.com/thgillwtnorizoh/rasc/actions/runs/43906938776/artifacts/14246535435) — development build; owner observed live unlocks and tested shutdown.
 
-The app does not modify your CS:GO files or grant Steam achievements. Select the GT-610 `csgo_gc/achievements.txt` path manually. First observation of existing awards establishes a silent baseline; subsequent observed changes appear in the event history. A corrected Classic-style desktop popup has been implemented for new events, but no original Steam overlay equivalence or owner runtime acceptance is claimed; the Modern profile is not implemented.
+The app does not modify your CS:GO files or grant Steam achievements. Select the GT-610 `csgo_gc/achievements.txt` path manually. First observation of existing awards establishes a silent baseline; subsequent observed changes appear in the event history. A corrected Classic-style desktop popup has been implemented for new events, but no original Steam overlay equivalence or owner runtime acceptance is claimed; the Modern normal desktop development candidate is available via P003-C01 (no original Steam overlay equivalence).
 
 **Latest P001 runtime note:** Owner confirmed six live unlocks, then a restart without duplicate event rows. Owner reported an earlier ~5-second exit; the revised build was user-qualified with a prompt visible close and 24.3ms internally while actively monitoring. The cause of the old delay remains unknown. P001-D01 is RESOLVED for owner-observed runtime (not independent QA). See [P001-C01-C02 owner evidence](docs/P001/checkpoints/P001-C01-C02.md).
 
@@ -55,7 +55,7 @@ The app does not modify your CS:GO files or grant Steam achievements. Select the
 - Classic source reference: `research/P000/classic/reference.md`. The corrected popup uses one clipped stack host, intended flush placement, **no alpha fade or visible strokes**, and user-target motion; **owner-target Helvetica Regular at 11.5 WPF DIPs with Arial fallback, not native-proven**; the source-vintage font conflict, original easing/overflow, exact raster and in-game overlay remain unverified.
 - Existing achievements restored in the history list do **not** trigger new toasts; only newly observed unlock events may do so.
 
-P000/P001/P002 subsystems remain **OPEN** without owner acceptance or independent Work 1 QA. Do not report a WPF build as human GUI qualification.
+P000/P001/P002/P003 subsystems remain **OPEN** without owner acceptance or independent Work 1 QA. Do not report a WPF build as human GUI qualification.
 
 ## P002-C01-C04 — Adjustable animation FPS and DPI-aware sizing
 
@@ -64,3 +64,12 @@ P000/P001/P002 subsystems remain **OPEN** without owner acceptance or independen
 **Settings:** Animation FPS is **Display-synced** (default) or any integer from **15 through 240**, including presets 30/60/90/120/144/165/240. FPS is an *average visual update target* sampled from WPF's real render callbacks, not physical monitor FPS or a change to 450ms slide/6000ms hold. Popup Size offers **Auto** (default; resolution-aware 1080p baseline with normal Windows DPI scaling) or 100–250% manual choices. Preferences persist at `%LOCALAPPDATA%\RASC\appearance.json`, and can be changed while toasts are visible. `app.manifest` requests PerMonitorV2 DPI awareness. Primary screen/work-area presentation only; additional monitors and actual pixel fidelity need human qualification. The accepted C02 card XAML/artwork/typography are unchanged.
 
 The owner reported C03 animation **123.3 WPF Rendering callbacks/sec**, longest gap **36.90ms** across seven segments; not actual presented FPS. P002 Classic is a **development-complete candidate for these two requested features**, subject to the owner's native Windows tests and independent QA. No new original Steam fidelity or subsystem acceptance is claimed.
+
+
+## P003-C01 — Modern normal-desktop notification implementation
+
+- [P003 guide](docs/P003/README.md) and [exact-SHA checkpoint](docs/P003/checkpoints/P003-C01.md).
+- [Development PR #4](https://github.com/thgillwtnorizoh/rasc/pull/4).
+- Verified test implementation commit: 2acebb8c43df58841fbf309fcaf8272f7d3fecf0, [Windows Actions run 44058257118](https://github.com/thgillwtnorizoh/rasc/actions/runs/44058257118): **117/117 tests**, **0 WPF build warnings/errors**, self-contained Windows x64 artifact uploaded.
+- Select **Classic / Modern / Off**; stored separately from existing Classic appearance preferences. Normal desktop Modern profile uses per-toast nonactivating WPF windows, a source-informed 283px width, provisionally 70px height, 300ms entrance/exit, 5s hold, 3 active slots plus FIFO. Classic source unchanged.
+- Modern visuals are a documented placeholder reconstruction, not Steam assets; in-game overlay, sound, special-mode queues, original CSS/font metrics, multi-monitor and owner Windows runtime qualification are **NOT VERIFIED**.
