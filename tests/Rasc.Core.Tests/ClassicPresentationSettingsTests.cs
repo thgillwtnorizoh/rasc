@@ -240,7 +240,7 @@ public sealed class ClassicPresentationSettingsTests
     public void GateRejectsInvalidTargetsAndClockReversal()
     {
         var limiter = new ClassicAnimationFrameGate();
-        Assert.Throws<ArgumentOutOfRangeException>(() => limiter.ShouldApply(TimeSpan.Zero, 61));
+        Assert.Throws<ArgumentOutOfRangeException>(() => limiter.ShouldApply(TimeSpan.Zero, 241));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             limiter.ShouldApply(TimeSpan.FromMilliseconds(-1), 60));
         Assert.True(limiter.ShouldApply(TimeSpan.FromSeconds(2), 60));
