@@ -20,6 +20,7 @@ internal sealed class ClassicToastHost : IDisposable
     private readonly Dictionary<string, ClassicToastCard> _cards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Content> _text = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _holdWake;
+    private readonly DispatcherTimer _anchorWake;
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private int _fpsCap;
     private int _popupSizePercent;
@@ -43,6 +44,11 @@ internal sealed class ClassicToastHost : IDisposable
     {
         _holdWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher);
         _holdWake.Tick += OnHoldWake;
+        _anchorWake = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _anchorWake.Tick += OnAnchorWake;
     }
 
     internal void SetSettings(ClassicPresentationSettings settings)
@@ -128,6 +134,12 @@ internal sealed class ClassicToastHost : IDisposable
         if (!_disposed) Tick();
     }
 
+    private void OnAnchorWake(object? sender, EventArgs e)
+    {
+        // Track foreground focus/resize/fullscreen even during quiet holds.
+        if (!_disposed) _window?.PositionOnForegroundApp();
+    }
+
     private void OnHoldWake(object? sender, EventArgs e)
     {
         _holdWake.Stop();
@@ -173,6 +185,7 @@ internal sealed class ClassicToastHost : IDisposable
     {
         if (_disposed) return;
         var frames = _schedule.Advance(_clock.Elapsed);
+        _window?.PositionOnForegroundApp();
         var visible = new HashSet<string>(frames.Select(f => f.Event.EventId),
             StringComparer.Ordinal);
         foreach (var id in _cards.Keys.Where(id => !visible.Contains(id)).ToArray())
@@ -189,6 +202,7 @@ internal sealed class ClassicToastHost : IDisposable
                 _window.DisplayMetricsChanged -= OnDisplayMetricsChanged;
                 _window.Close();
                 _window = null;
+                _anchorWake.Stop();
             }
         }
         else
@@ -199,6 +213,7 @@ internal sealed class ClassicToastHost : IDisposable
                 _window.SetPopupSizePercent(_popupSizePercent);
                 _window.DisplayMetricsChanged += OnDisplayMetricsChanged;
                 _window.Show();
+                _anchorWake.Start();
             }
             foreach (var frame in frames)
             {
@@ -273,6 +288,8 @@ internal sealed class ClassicToastHost : IDisposable
         StopFrameUpdates();
         _holdWake.Stop();
         _holdWake.Tick -= OnHoldWake;
+        _anchorWake.Stop();
+        _anchorWake.Tick -= OnAnchorWake;
         _schedule.Clear();
         if (_window is not null)
         {

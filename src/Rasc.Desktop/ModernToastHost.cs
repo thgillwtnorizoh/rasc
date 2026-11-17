@@ -20,6 +20,7 @@ internal sealed class ModernToastHost : IDisposable
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly DispatcherTimer _holdWake;
     private readonly DispatcherTimer _batchWake;
+    private readonly DispatcherTimer _anchorWake;
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private TimeSpan? _lastRenderTime;
     private int _fpsCap;
@@ -39,6 +40,11 @@ internal sealed class ModernToastHost : IDisposable
             Interval = TimeSpan.FromMilliseconds(45)
         };
         _batchWake.Tick += OnBatchWake;
+        _anchorWake = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _anchorWake.Tick += OnAnchorWake;
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
@@ -110,6 +116,14 @@ internal sealed class ModernToastHost : IDisposable
             "rasc-local-preview", "REFERENCE-FIXTURE-NOT-AN-AWARD",
             0, DateTimeOffset.UtcNow);
 
+    private void OnAnchorWake(object? sender, EventArgs args)
+    {
+        // WPF Rendering is unsubscribed during the normal five-second hold.
+        // Reposition only: timers remain based on the original monotonic
+        // waveStart and never restart when focus/monitor/app bounds change.
+        if (!_disposed && _windows.Count > 0) Tick();
+    }
+
     private void OnBatchWake(object? sender, EventArgs args)
     {
         _batchWake.Stop();
@@ -174,16 +188,6 @@ internal sealed class ModernToastHost : IDisposable
         _holdWake.Start();
     }
 
-    private static double Scale(Rect work, int requested)
-    {
-        var scale = requested == 0
-            ? Math.Clamp(SystemParameters.PrimaryScreenHeight / 1080.0, 1.0, 2.0)
-            : requested / 100.0;
-        return Math.Max(0.1, Math.Min(scale, Math.Min(
-            work.Width / ModernToastScheduler.CardWidth,
-            work.Height / (ModernToastScheduler.CardHeight * ModernToastScheduler.Capacity))));
-    }
-
     private void Tick()
     {
         if (_disposed) return;
@@ -201,8 +205,9 @@ internal sealed class ModernToastHost : IDisposable
             _content.Remove(id);
         }
 
-        var work = SystemParameters.WorkArea;
-        var scale = Scale(work, _sizePercent);
+        var target = ForegroundWindowPlacement.Capture();
+        var scale = target.Scale(ModernToastScheduler.CardWidth,
+            ModernToastScheduler.CardHeight * ModernToastScheduler.Capacity, _sizePercent);
         // Scheduler returns top-to-bottom. Last-created lower windows naturally
         // cover earlier upper ones while entering from the common origin.
         foreach (var frame in frames)
@@ -211,20 +216,26 @@ internal sealed class ModernToastHost : IDisposable
             {
                 window = new ModernToastWindow(_content[frame.Event.EventId]);
                 _windows.Add(frame.Event.EventId, window);
-                window.Apply(frame, scale, work);
+                window.Apply(frame, scale, target);
                 window.Show();
             }
-            else window.Apply(frame, scale, work);
+            else window.Apply(frame, scale, target);
         }
 
         if (_schedule.IsIdle)
         {
             StopRendering();
             _holdWake.Stop();
+            _anchorWake.Stop();
         }
-        else if (_schedule.IsAnimating) StartRendering();
+        else if (_schedule.IsAnimating)
+        {
+            _anchorWake.Start();
+            StartRendering();
+        }
         else
         {
+            _anchorWake.Start();
             StopRendering();
             SleepUntilExpiry();
         }
@@ -237,7 +248,9 @@ internal sealed class ModernToastHost : IDisposable
         StopRendering();
         _holdWake.Stop();
         _batchWake.Stop();
+        _anchorWake.Stop();
         _holdWake.Tick -= OnHoldWake;
+        _anchorWake.Tick -= OnAnchorWake;
         _batchWake.Tick -= OnBatchWake;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
