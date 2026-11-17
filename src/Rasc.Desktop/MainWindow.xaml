@@ -49,6 +49,9 @@
       <Button Content="Preview Unlock" Margin="12,0,0,0" Padding="13,9"
               Click="PreviewClassic_Click"
               ToolTip="Uses the owner-supplied unlock screenshot text as a presentation-only fixture."/>
+      <Button Content="Preview Rare" Margin="10,0,0,0" Padding="13,9"
+              Click="PreviewRare_Click"
+              ToolTip="Modern-only rare achievement golden-frame test; no GC or history changes."/>
       <Button Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"
               Click="PreviewProgress_Click"
               ToolTip="Shows a test progress notification only; GT-610 does not persist progress callbacks."/>

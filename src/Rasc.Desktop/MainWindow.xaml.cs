@@ -309,6 +309,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PreviewRare_Click(object sender, RoutedEventArgs e)
+    {
+        if (_profile == NotificationProfile.Modern) _modernToasts.PreviewRare();
+        else StatusText.Text = "Rare preview requires the Modern profile.";
+    }
+
     private void PreviewProgress_Click(object sender, RoutedEventArgs e)
     {
         // Display-only fixture; no fabricated GC callbacks or SQLite updates.

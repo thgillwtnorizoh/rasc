@@ -1,55 +1,41 @@
 namespace Rasc.Core;
 
 /// <summary>
-/// Bounded desktop-achievement scheduler informed by P000's supplied modern
-/// Steam UI bundle. The supported profile is NORMAL desktop achievements only:
-/// 283px wide, a provisional 70px achievement card, 300ms entrance/exit and
-/// a 5000ms default hold, three active slots, and FIFO waiting.
-/// Display-alone, alternate capacity, server-data delay, type-specific height,
-/// compositor interpolation and in-game overlay paths are NOT implemented.
+/// P003-C02 owner-target NORMAL desktop achievement waves. All events admitted
+/// while idle form one bounded wave of up to three notifications. Events earned
+/// during an active wave wait until that wave has fully returned to the common
+/// off-screen origin. This is an ENGINEERING reading of owner-observed motion,
+/// not a claim about every original Steam notification type.
 /// </summary>
 public sealed class ModernToastScheduler
 {
     public const int Capacity = 3;
     public const double CardWidth = 283;
-    // 70px is confirmed for DesktopToastContainer, not all toast window types.
+    // Owner screenshot supports 70px for the shown achievement cards only.
     public const double CardHeight = 70;
     public static readonly TimeSpan Entrance = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan Hold = TimeSpan.FromMilliseconds(5000);
     public static readonly TimeSpan Exit = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan Lifetime = Entrance + Hold + Exit;
 
-    private sealed record Active(UnlockEvent Event, TimeSpan Started, long Order);
-    private readonly List<Active> _active = [];
+    private readonly List<UnlockEvent> _wave = [];
     private readonly Queue<UnlockEvent> _waiting = new();
     private readonly HashSet<string> _known = new(StringComparer.Ordinal);
-    private bool _clockStarted;
+    private TimeSpan _waveStarted;
     private TimeSpan _previous;
-    private long _order;
+    private bool _clockStarted;
 
-    public int ActiveCount => _active.Count;
+    public int ActiveCount => _wave.Count;
     public int WaitingCount => _waiting.Count;
-    public bool IsIdle => _active.Count == 0 && _waiting.Count == 0;
-    public bool IsAnimating => _active.Any(a =>
-    {
-        var elapsed = _previous - a.Started;
-        return elapsed < Entrance || elapsed >= Entrance + Hold;
-    });
+    public bool IsIdle => _wave.Count == 0 && _waiting.Count == 0;
+    public bool IsAnimating => _wave.Count != 0 &&
+        (_previous - _waveStarted < Entrance ||
+         _previous - _waveStarted >= Entrance + Hold);
 
-    public TimeSpan? NextHoldDeadline
-    {
-        get
-        {
-            TimeSpan? next = null;
-            foreach (var a in _active)
-            {
-                var deadline = a.Started + Entrance + Hold;
-                if (deadline <= _previous) continue;
-                if (next is null || deadline < next.Value) next = deadline;
-            }
-            return next;
-        }
-    }
+    public TimeSpan? NextHoldDeadline =>
+        _wave.Count > 0 && !IsAnimating
+            ? _waveStarted + Entrance + Hold
+            : null;
 
     public bool Enqueue(UnlockEvent evt)
     {
@@ -61,81 +47,123 @@ public sealed class ModernToastScheduler
         return true;
     }
 
+    /// <summary>
+    /// Called once when the desktop host finishes its short admission batch.
+    /// Advances the idle clock without showing a partial wave, so the first
+    /// rendered frame really starts at the shared below-taskbar origin.
+    /// </summary>
+    public void AlignPendingWaveStart(TimeSpan now)
+    {
+        if (_wave.Count != 0 || _waiting.Count == 0)
+            throw new InvalidOperationException("Only a not-yet-admitted wave may be aligned.");
+        if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
+            throw new ArgumentOutOfRangeException(nameof(now));
+        _clockStarted = true;
+        _previous = now;
+    }
+
     public IReadOnlyList<ModernToastFrame> Advance(TimeSpan now)
     {
         if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
             throw new ArgumentOutOfRangeException(nameof(now), "Time must be monotonic.");
 
+        // Hosts must advance their monotonic clock BEFORE enqueueing after
+        // idle; that lets the new wave begin now, not when the process launched.
         var cursor = _clockStarted ? _previous : TimeSpan.Zero;
         _clockStarted = true;
 
-        // Replay completed lifetimes at their exact deadline, so delayed
-        // callbacks do not extend past notifications or starve the FIFO.
-        for (var step = 0; step < 100000; step++)
+        // Resolve a slow callback at exact transition deadlines; a backlog
+        // never extends the lifetime of already expired notifications.
+        while (true)
         {
-            while (_active.Count < Capacity && _waiting.Count != 0)
-                _active.Add(new Active(_waiting.Dequeue(), cursor, ++_order));
+            if (_wave.Count == 0 && _waiting.Count > 0)
+            {
+                _waveStarted = cursor;
+                while (_wave.Count < Capacity && _waiting.Count > 0)
+                    _wave.Add(_waiting.Dequeue());
+            }
+            if (_wave.Count == 0) break;
 
-            if (_active.Count == 0) break;
-            var earliestEnd = _active.Min(a => a.Started + Lifetime);
-            if (earliestEnd > now) break;
-            _active.RemoveAll(a => a.Started + Lifetime <= earliestEnd);
-            cursor = earliestEnd;
+            var deadline = _waveStarted + Lifetime;
+            if (deadline > now) break;
+            _wave.Clear();
+            cursor = deadline;
         }
 
         _previous = now;
-        // Newest at the bottom is an explicit desktop ENGINEERING choice
-        // pending original runtime frame evidence.
-        var sorted = _active.OrderByDescending(a => a.Started)
-            .ThenByDescending(a => a.Order).ToArray();
-        var frames = new List<ModernToastFrame>(sorted.Length);
-        for (var slot = 0; slot < sorted.Length; slot++)
+        if (_wave.Count == 0) return [];
+
+        var elapsed = now - _waveStarted;
+        var stage = elapsed < Entrance ? ModernToastStage.Entering :
+            elapsed < Entrance + Hold ? ModernToastStage.Showing :
+            ModernToastStage.Exiting;
+        // Phase fraction is a *visibility* fraction. Every member moves
+        // from y=0 (completely below work-area bottom) to its assigned slot,
+        // then returns to the SAME origin. There is no independent entry point.
+        var fraction = stage switch
         {
-            var a = sorted[slot];
-            var elapsed = now - a.Started;
-            var stage = elapsed < Entrance
-                ? ModernToastStage.Entering
-                : elapsed < Entrance + Hold
-                    ? ModernToastStage.Showing
-                    : ModernToastStage.Exiting;
-            var progress = stage switch
-            {
-                ModernToastStage.Entering => Math.Clamp(
-                    elapsed.TotalMilliseconds / Entrance.TotalMilliseconds, 0, 1),
-                ModernToastStage.Exiting => Math.Clamp(
-                    (elapsed - Entrance - Hold).TotalMilliseconds /
-                    Exit.TotalMilliseconds, 0, 1),
-                _ => 1.0
-            };
-            var offset = stage switch
-            {
-                ModernToastStage.Entering => CardHeight * (1 - progress),
-                ModernToastStage.Exiting => CardHeight * progress,
-                _ => 0
-            };
-            frames.Add(new ModernToastFrame(a.Event, slot, stage,
-                -(slot + 1) * CardHeight + offset, progress));
+            ModernToastStage.Entering =>
+                Math.Clamp(elapsed.TotalMilliseconds / Entrance.TotalMilliseconds, 0, 1),
+            ModernToastStage.Exiting =>
+                Math.Clamp((Lifetime - elapsed).TotalMilliseconds / Exit.TotalMilliseconds, 0, 1),
+            _ => 1d
+        };
+        var count = _wave.Count;
+        var frames = new List<ModernToastFrame>(count);
+        // Oldest at top, newest at bottom. Render top-to-bottom; bottom window
+        // is created last so it naturally overlaps the stack as cards emerge.
+        for (var i = 0; i < count; i++)
+        {
+            var slot = count - i - 1;
+            frames.Add(new ModernToastFrame(_wave[i], slot, count, stage,
+                -(slot + 1) * CardHeight * fraction, fraction));
         }
         return frames;
     }
 
     public void Clear()
     {
-        _active.Clear();
+        _wave.Clear();
         _waiting.Clear();
         _known.Clear();
         _clockStarted = false;
+        _waveStarted = TimeSpan.Zero;
         _previous = TimeSpan.Zero;
-        _order = 0;
     }
 }
 
 public enum ModernToastStage { Entering, Showing, Exiting }
 
-/// <param name="BottomRelativeY">Logical top edge relative to the work area bottom.</param>
+/// <param name="BottomRelativeY">Card top relative to work-area bottom,
+/// including wave interpolation; 0 is the common fully hidden origin.</param>
+/// <param name="WaveSize">Number of simultaneously active cards in this wave.</param>
+/// <param name="Progress">Visibility interpolation 0..1 (not a progress achievement value).</param>
 public sealed record ModernToastFrame(
     UnlockEvent Event,
     int Slot,
+    int WaveSize,
     ModernToastStage Stage,
     double BottomRelativeY,
     double Progress);
+
+/// <summary>
+/// Owner-observed dynamic Steam-logo watermark. Placement models ONE shared
+/// decoration across the occupied stack; each toast displays its corresponding
+/// clipped segment. Geometry is a nonproprietary approximation awaiting the
+/// original hashed CSS positions and runtime images.
+/// </summary>
+public static class ModernWatermarkLayout
+{
+    public const double LogoHeight = 170;
+
+    public static double TopInsideCard(int waveSize, int slot)
+    {
+        if (waveSize is < 1 or > ModernToastScheduler.Capacity)
+            throw new ArgumentOutOfRangeException(nameof(waveSize));
+        if (slot < 0 || slot >= waveSize)
+            throw new ArgumentOutOfRangeException(nameof(slot));
+        var logoTop = (waveSize * ModernToastScheduler.CardHeight - LogoHeight) / 2.0;
+        var cardTopInWave = (waveSize - 1 - slot) * ModernToastScheduler.CardHeight;
+        return logoTop - cardTopInWave;
+    }
+}

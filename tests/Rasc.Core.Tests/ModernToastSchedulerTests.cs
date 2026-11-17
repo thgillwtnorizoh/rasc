@@ -131,16 +131,18 @@ public sealed class ModernToastSchedulerTests
     }
 
     [Fact]
-    public void SlotsAreDistinctAndNewestAtBottom()
+    public void SlotsAreDistinctAndOldestAtTopInOneWave()
     {
         var scheduler = new ModernToastScheduler();
         scheduler.Enqueue(Event(1));
         scheduler.Enqueue(Event(2));
         scheduler.Enqueue(Event(3));
         var frames = scheduler.Advance(TimeSpan.FromMilliseconds(300));
-        Assert.Equal(new[] { "event-3", "event-2", "event-1" },
+        // C02 owner-target wave: events emitted in one batch preserve FIFO
+        // from top to bottom instead of P003-C01's arbitrary reversed order.
+        Assert.Equal(new[] { "event-1", "event-2", "event-3" },
             frames.Select(f => f.Event.EventId).ToArray());
-        Assert.Equal(new[] { -70.0, -140.0, -210.0 },
+        Assert.Equal(new[] { -210.0, -140.0, -70.0 },
             frames.Select(f => f.BottomRelativeY).ToArray());
     }
 }
