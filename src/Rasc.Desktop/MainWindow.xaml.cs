@@ -163,8 +163,13 @@ public partial class MainWindow : Window
 
     private void PreviewClassic_Click(object sender, RoutedEventArgs e)
     {
-        // Explicit non-persistent presentation fixture: never enters the GC or SQLite store.
-        _classicToasts.Preview();
+        _classicToasts.PreviewUnlock();
+    }
+
+    private void PreviewProgress_Click(object sender, RoutedEventArgs e)
+    {
+        // Screenshot fixture only: no GC progress or SQLite writes are fabricated.
+        _classicToasts.PreviewProgress();
     }
 
     private sealed record UnlockRow(string AchievementId, string Observed);

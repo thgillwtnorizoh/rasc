@@ -32,17 +32,20 @@
       <Button Grid.Column="1" Content="Browse..." Margin="10,23,0,0"
               Padding="14,5" MinWidth="93" Click="Browse_Click"/>
     </Grid>
-    <StackPanel Grid.Row="4" Orientation="Horizontal">
+    <WrapPanel Grid.Row="4" Orientation="Horizontal">
       <Button x:Name="StartButton" Content="Start monitoring" Padding="18,9"
               Click="Start_Click"/>
       <Button x:Name="StopButton" Content="Stop" IsEnabled="False"
               Margin="10,0,0,0" Padding="18,9" Click="Stop_Click"/>
       <CheckBox x:Name="ClassicPopupsCheck" Content="Classic popups" IsChecked="True"
                 Margin="18,0,0,0" VerticalAlignment="Center"/>
-      <Button Content="Preview Classic" Margin="12,0,0,0" Padding="13,9"
+      <Button Content="Preview Unlock" Margin="12,0,0,0" Padding="13,9"
               Click="PreviewClassic_Click"
-              ToolTip="Shows a local test popup; does not unlock anything or write to history."/>
-    </StackPanel>
+              ToolTip="Uses the owner-supplied unlock screenshot text as a presentation-only fixture."/>
+      <Button Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"
+              Click="PreviewProgress_Click"
+              ToolTip="Shows a test progress notification only; GT-610 does not persist progress callbacks."/>
+    </WrapPanel>
     <Grid Grid.Row="6">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
@@ -63,7 +66,7 @@
       <TextBlock x:Name="StatusText" FontWeight="SemiBold" Text="Idle — choose the GC file to begin."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
-                 Text="On first monitoring, existing achievements become the baseline without new popups. Missing or malformed files never erase the checkpoint. Classic desktop popups are an unverified P002 preview; Modern, original assets, audio, and exact native motion remain future work."/>
+                 Text="On first monitoring, existing achievements become the baseline without new popups. Missing or malformed files never erase the checkpoint. Classic popups are a P002 visual target under qualification. No Steam integration, historical popup replay, or durable progress callbacks. Preview buttons do not change your GC file/history."/>
     </StackPanel>
   </Grid>
 </Window>
