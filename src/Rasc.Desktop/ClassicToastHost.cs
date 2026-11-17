@@ -1,13 +1,17 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Rasc.Core;
 
 namespace Rasc.Desktop;
 
 /// <summary>
-/// Main-window-owned WPF presentation adapter. Only NEW monitor events enqueue.
-/// One childless, click-through stack host owns all animated card visuals.
-/// Caller must use the UI dispatcher; source store/GC file are never modified.
+/// Main-window-owned presentation. Only new monitor events enqueue; previews
+/// never write to GC or SQLite. WPF Rendering drives ONLY transitions, while a
+/// one-shot dispatcher wake handles six-second holds without wasting frames.
+/// Rendering callbacks are counted for diagnostics, not claimed presented FPS.
 /// </summary>
 internal sealed class ClassicToastHost : IDisposable
 {
@@ -15,18 +19,23 @@ internal sealed class ClassicToastHost : IDisposable
     private readonly ClassicToastScheduler _schedule = new();
     private readonly Dictionary<string, ClassicToastCard> _cards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Content> _text = new(StringComparer.Ordinal);
-    private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _holdWake;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private ClassicToastStackWindow? _window;
+    private bool _renderSubscribed;
     private bool _disposed;
+    private TimeSpan? _previousRenderTime;
+    private TimeSpan? _previousCallbackAt;
+    private long _renderCallbacks;
+    private long _validIntervals;
+    private int _animationSegments;
+    private double _totalIntervalSeconds;
+    private double _maxFrameIntervalMilliseconds;
 
     internal ClassicToastHost(Dispatcher dispatcher)
     {
-        _timer = new DispatcherTimer(DispatcherPriority.Render, dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(16)
-        };
-        _timer.Tick += OnTick;
+        _holdWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher);
+        _holdWake.Tick += OnHoldWake;
     }
 
     internal void Enqueue(UnlockEvent evt) =>
@@ -35,28 +44,22 @@ internal sealed class ClassicToastHost : IDisposable
     private void Enqueue(UnlockEvent evt, string title, string description)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        // Synchronize the clock BEFORE enqueueing. Otherwise, an item received
-        // after an idle interval might be incorrectly time-traveled into the past.
+        // Bring the scheduler to NOW before enqueue; idle time must not
+        // make a newly received achievement appear to have arrived earlier.
         Tick();
         if (!_schedule.Enqueue(evt)) return;
         _text[evt.EventId] = new Content(title, description);
-        if (!_timer.IsEnabled) _timer.Start();
         Tick();
     }
 
     internal void Preview() => PreviewUnlock();
 
-    internal void PreviewUnlock()
-    {
+    internal void PreviewUnlock() =>
         Enqueue(PreviewEvent(), "Achievement Unlocked!", "Someone Set Up Us The Bomb");
-    }
 
-    internal void PreviewProgress()
-    {
-        // Reference fixture ONLY. GT-610's stats file has no durable progress stream.
+    internal void PreviewProgress() =>
         Enqueue(PreviewEvent(), "Achievement Progress",
             "Paranatural Collection (20,010/100,000)");
-    }
 
     private static UnlockEvent PreviewEvent()
     {
@@ -65,17 +68,77 @@ internal sealed class ClassicToastHost : IDisposable
             "rasc-local-preview", "REFERENCE-FIXTURE-NOT-AN-AWARD", 0, now);
     }
 
-    private void OnTick(object? sender, EventArgs e) => Tick();
+    private void OnRendering(object? sender, EventArgs args)
+    {
+        if (_disposed || !_renderSubscribed) return;
+        // Rendering may be raised more than once for the same composition time
+        // if layout is invalidated during a frame. Avoid counting duplicate
+        // callbacks as distinct displayed frames.
+        if (args is RenderingEventArgs render)
+        {
+            if (render.RenderingTime == _previousRenderTime) return;
+            _previousRenderTime = render.RenderingTime;
+        }
+        var at = _clock.Elapsed;
+        if (_previousCallbackAt is { } last && at > last)
+        {
+            var gap = at - last;
+            _validIntervals++;
+            _totalIntervalSeconds += gap.TotalSeconds;
+            _maxFrameIntervalMilliseconds = Math.Max(_maxFrameIntervalMilliseconds,
+                gap.TotalMilliseconds);
+        }
+        _previousCallbackAt = at;
+        _renderCallbacks++;
+        Tick();
+    }
+
+    private void OnHoldWake(object? sender, EventArgs e)
+    {
+        _holdWake.Stop();
+        Tick();
+    }
+
+    private void StartFrameUpdates()
+    {
+        _holdWake.Stop();
+        if (_renderSubscribed) return;
+        _previousRenderTime = null;
+        _previousCallbackAt = null;
+        _animationSegments++;
+        CompositionTarget.Rendering += OnRendering;
+        _renderSubscribed = true;
+    }
+
+    private void StopFrameUpdates()
+    {
+        if (!_renderSubscribed) return;
+        CompositionTarget.Rendering -= OnRendering;
+        _renderSubscribed = false;
+        _previousRenderTime = null;
+        _previousCallbackAt = null;
+    }
+
+    private void SleepUntilNextExpiry()
+    {
+        var next = _schedule.NextHoldDeadline;
+        if (!next.HasValue) return;
+        var remaining = next.Value - _clock.Elapsed;
+        _holdWake.Interval = TimeSpan.FromMilliseconds(
+            Math.Clamp(Math.Ceiling(remaining.TotalMilliseconds), 1.0, 60_000.0));
+        _holdWake.Stop();
+        _holdWake.Start();
+    }
 
     private void Tick()
     {
         if (_disposed) return;
         var frames = _schedule.Advance(_clock.Elapsed);
-        var visible = new HashSet<string>(frames.Select(x => x.Event.EventId),
+        var visible = new HashSet<string>(frames.Select(f => f.Event.EventId),
             StringComparer.Ordinal);
         foreach (var id in _cards.Keys.Where(id => !visible.Contains(id)).ToArray())
         {
-            if (_window is not null) _window.Remove(_cards[id]);
+            _window?.Remove(_cards[id]);
             _cards.Remove(id);
             _text.Remove(id);
         }
@@ -93,34 +156,75 @@ internal sealed class ClassicToastHost : IDisposable
                 _window.PositionOnPrimaryWorkArea();
                 _window.Show();
             }
-            foreach (var f in frames)
+            foreach (var frame in frames)
             {
-                if (!_cards.TryGetValue(f.Event.EventId, out var card))
+                if (!_cards.TryGetValue(frame.Event.EventId, out var card))
                 {
-                    var content = _text[f.Event.EventId];
+                    var content = _text[frame.Event.EventId];
                     card = new ClassicToastCard(content.Title, content.Description);
-                    _cards.Add(f.Event.EventId, card);
+                    _cards.Add(frame.Event.EventId, card);
                 }
-                _window.Apply(card, f);
+                _window.Apply(card, frame);
             }
         }
 
-        if (_schedule.IsIdle) _timer.Stop();
+        if (_schedule.IsIdle)
+        {
+            StopFrameUpdates();
+            _holdWake.Stop();
+        }
+        else if (_schedule.IsAnimating)
+        {
+            StartFrameUpdates();
+        }
+        else
+        {
+            StopFrameUpdates();
+            SleepUntilNextExpiry();
+        }
+    }
+
+    private void WriteRenderDiagnostics()
+    {
+        try
+        {
+            var folder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "RASC");
+            Directory.CreateDirectory(folder);
+            var fps = _validIntervals != 0 && _totalIntervalSeconds > 0
+                ? (_validIntervals / _totalIntervalSeconds).ToString("F1", CultureInfo.InvariantCulture)
+                : "NOT MEASURED";
+            File.WriteAllText(Path.Combine(folder, "last-classic-animation.txt"),
+                "RASC Classic animation callback diagnostics (NOT physical presentation FPS)" +
+                Environment.NewLine +
+                "Animation segments: " + _animationSegments + Environment.NewLine +
+                "Unique WPF Rendering callbacks: " + _renderCallbacks + Environment.NewLine +
+                "Callback intervals sampled: " + _validIntervals + Environment.NewLine +
+                "Average render callback rate (fps approximation): " + fps + Environment.NewLine +
+                "Longest callback interval (ms): " +
+                _maxFrameIntervalMilliseconds.ToString("F2", CultureInfo.InvariantCulture) +
+                Environment.NewLine +
+                "Measured over active slide segments only; idle holds excluded. " +
+                "Monitor refresh and actual displayed frames have NOT been instrumented." +
+                Environment.NewLine);
+        }
+        catch (IOException) { /* optional diagnostics never block normal shutdown */ }
+        catch (UnauthorizedAccessException) { /* optional only */ }
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _timer.Stop();
-        _timer.Tick -= OnTick;
+        StopFrameUpdates();
+        _holdWake.Stop();
+        _holdWake.Tick -= OnHoldWake;
         _schedule.Clear();
-        if (_window is not null)
-        {
-            _window.Close();
-            _window = null;
-        }
+        _window?.Close();
+        _window = null;
         _cards.Clear();
         _text.Clear();
+        WriteRenderDiagnostics();
     }
 }

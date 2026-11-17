@@ -249,6 +249,74 @@ public sealed class ClassicToastSchedulerTests
         Assert.Throws<ArgumentOutOfRangeException>(() => ClassicToastPixelGrid.Map(f, dpi));
     }
 
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(1.75)]
+    [InlineData(2.0)]
+    public void ThreeSettledCardsShareTheSameSnappedPixelSeams(double dpi)
+    {
+        var scheduler = new ClassicToastScheduler();
+        for (var i = 1; i <= 3; i++) scheduler.Enqueue(E(i));
+        var frames = scheduler.Advance(TimeSpan.Zero);
+        frames = scheduler.Advance(TimeSpan.FromMilliseconds(1350));
+        Assert.Equal(3, frames.Count);
+
+        var ordered = frames.OrderBy(f => f.Y).ToArray(); // top, middle, bottom
+        for (var i = 0; i < 2; i++)
+        {
+            var upper = ClassicToastPixelGrid.Map(ordered[i], dpi);
+            var lower = ClassicToastPixelGrid.Map(ordered[i + 1], dpi);
+            Assert.Equal(upper.VisibleBottom, lower.VisibleTop);
+            Assert.Equal(lower.OriginY, upper.VisibleBottom);
+            Assert.True(upper.VisibleHeight > 0 && lower.VisibleHeight > 0);
+        }
+    }
+
+    [Theory]
+    [InlineData(1.25, 117.5, 118)]
+    [InlineData(1.75, 164.5, 165)]
+    public void FractionalDpiCanExposeTheFirstSeamWithoutPixelAlignedBackplates(
+        double scale, double paintedHeightPixels, int secondOriginPixels)
+    {
+        // Reproduces the precise half-pixel underfill scenario: the top
+        // 94-DIP card draws 117.5/164.5px while the next origin is snapped
+        // to 118/165px. The middle->bottom junction is differently rounded.
+        Assert.Equal(ClassicToastScheduler.CardHeight * scale,
+            paintedHeightPixels, 5);
+        Assert.True(paintedHeightPixels < secondOriginPixels);
+        var settled = new ClassicToastFrame(E(1), 2,
+            ClassicToastStage.Visible, 0, 0, ClassicToastScheduler.CardHeight);
+        var mapped = ClassicToastPixelGrid.Map(settled, scale);
+        Assert.Equal(secondOriginPixels, mapped.VisibleBottom);
+        Assert.True(mapped.VisibleBottom > paintedHeightPixels);
+    }
+
+    [Fact]
+    public void HoldingCanSleepUntilExactSourceDerivedExpiration()
+    {
+        var scheduler = new ClassicToastScheduler();
+        Assert.False(scheduler.IsAnimating);
+        Assert.Null(scheduler.NextHoldDeadline);
+        scheduler.Enqueue(E(1));
+        scheduler.Advance(TimeSpan.Zero);
+        Assert.True(scheduler.IsAnimating);
+        Assert.Null(scheduler.NextHoldDeadline);
+        scheduler.Advance(TimeSpan.FromMilliseconds(450));
+        Assert.False(scheduler.IsAnimating);
+        Assert.Equal(TimeSpan.FromMilliseconds(6450),
+            scheduler.NextHoldDeadline);
+        scheduler.Advance(TimeSpan.FromMilliseconds(6449));
+        Assert.False(scheduler.IsAnimating);
+        scheduler.Advance(TimeSpan.FromMilliseconds(6450));
+        Assert.True(scheduler.IsAnimating);
+        Assert.Null(scheduler.NextHoldDeadline);
+        Assert.Empty(scheduler.Advance(TimeSpan.FromMilliseconds(6900)));
+        Assert.True(scheduler.IsIdle);
+        Assert.Null(scheduler.NextHoldDeadline);
+    }
+
     [Fact]
     public void R09DuplicateSuppressedWhileTrackedAndReleasedAfterExit()
     {

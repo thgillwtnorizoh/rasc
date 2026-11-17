@@ -39,6 +39,19 @@ public sealed class ClassicToastScheduler
     public int ActiveCount => _settled.Count + (_motion?.Kind == MotionKind.Enter ? 1 : 0);
     public bool IsIdle => _settled.Count == 0 && _waiting.Count == 0 && _motion is null;
 
+    /// <summary>True only during a 450ms slide; WPF only needs per-frame updates then.</summary>
+    public bool IsAnimating => _motion is not null;
+
+    /// <summary>
+    /// Future monotonic clock deadline when the next held toast becomes eligible to
+    /// exit. Returns null during animations and when idle. The presentation host
+    /// can sleep without a high-rate dispatcher timer during the six-second hold.
+    /// </summary>
+    public TimeSpan? NextHoldDeadline =>
+        _motion is null && _settled.Count != 0
+            ? _settled.Min(card => card.Expiration)
+            : null;
+
     public bool Enqueue(UnlockEvent evt)
     {
         ArgumentNullException.ThrowIfNull(evt);

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using Rasc.Core;
 
 namespace Rasc.Desktop;
@@ -17,6 +18,32 @@ public partial class ClassicToastStackWindow : Window
     private const long WsExTransparent = 0x00000020L;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExNoActivate = 0x08000000L;
+
+    // Explicit physical-pixel backplates extend each card's original
+    // background to its snapped cell boundary. At 125% / 175% DPI, a 94-DIP
+    // card is 117.5 / 164.5 physical pixels tall: independently rounding
+    // the *next* origin may otherwise expose a half-pixel seam in a 3-stack.
+    // Background only is extended; icon, text and the accepted visual
+    // dimensions/proportions remain completely unchanged.
+    private readonly Dictionary<ClassicToastCard, Rectangle> _backplates = new();
+    private static readonly Brush BackplateBrush = CreateBackplateBrush();
+
+    private static Brush CreateBackplateBrush()
+    {
+        var fill = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop(Color.FromRgb(42, 46, 51), 0),
+                new GradientStop(Color.FromRgb(18, 26, 42), 0.851),
+                new GradientStop(Color.FromRgb(18, 26, 42), 1)
+            }
+        };
+        fill.Freeze();
+        return fill;
+    }
 
     public ClassicToastStackWindow()
     {
@@ -47,14 +74,55 @@ public partial class ClassicToastStackWindow : Window
             0, ClassicToastScheduler.CardHeight);
         var clipBottom = Math.Clamp((px.VisibleBottom - px.OriginY) / dpiScale,
             clipTop, ClassicToastScheduler.CardHeight);
+        // The original card's 94-DIP painting surface need not reach the
+        // next card's snapped physical-pixel origin on fractional DPI. Add
+        // an opaque, source-color-matched underlay with pixel-aligned bounds.
+        // It only fills the <1 physical pixel edge that WPF can leave clear;
+        // it never changes any text/icon geometry or adds visual spacing.
+        if (!_backplates.TryGetValue(card, out var backplate))
+        {
+            backplate = new Rectangle
+            {
+                Width = ClassicToastScheduler.CardWidth,
+                Fill = BackplateBrush,
+                SnapsToDevicePixels = true,
+                IsHitTestVisible = false
+            };
+            RenderOptions.SetEdgeMode(backplate, EdgeMode.Aliased);
+            _backplates.Add(card, backplate);
+            Viewport.Children.Add(backplate);
+        }
+        // Use the SAME quantized bottom edge for the background and the
+        // following card's top. This removes an actual transparent seam
+        // without disguising the lower card's intentional 14-DIP top inset.
+        var fullBottomPx = (int)Math.Round(
+            (frame.Y + ClassicToastScheduler.CardHeight) * dpiScale,
+            MidpointRounding.AwayFromZero);
+        backplate.Height = Math.Max(0, fullBottomPx - px.OriginY) / dpiScale;
+        backplate.Clip = new RectangleGeometry(new Rect(
+            0,
+            Math.Max(0, (px.VisibleTop - px.OriginY) / dpiScale),
+            ClassicToastScheduler.CardWidth,
+            Math.Max(0, (px.VisibleBottom - px.VisibleTop) / dpiScale)));
+        Canvas.SetLeft(backplate, 0);
+        Canvas.SetTop(backplate, y);
+
         card.Clip = new RectangleGeometry(new Rect(0, clipTop,
             ClassicToastScheduler.CardWidth, clipBottom - clipTop));
         Canvas.SetLeft(card, 0);
         Canvas.SetTop(card, y);
-        Panel.SetZIndex(card, -frame.Slot); // lower card always occludes higher
+        // Each lower card (and its matching underlay) occludes the card
+        // above during downward sink transitions.
+        Panel.SetZIndex(backplate, -2 * frame.Slot);
+        Panel.SetZIndex(card, -2 * frame.Slot + 1);
     }
 
-    public void Remove(ClassicToastCard card) => Viewport.Children.Remove(card);
+    public void Remove(ClassicToastCard card)
+    {
+        Viewport.Children.Remove(card);
+        if (_backplates.Remove(card, out var backplate))
+            Viewport.Children.Remove(backplate);
+    }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
