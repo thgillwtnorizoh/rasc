@@ -128,3 +128,7 @@ A correction checkpoint must give exact starting/produced/tested Git SHAs; Windo
 - **C-D05 (NEW):** no visible card/icon border in owner's target versus procedural original style edges seen in static resource; requires visual evidence and owner resolution.
 - **C-D06 (NEW):** FIFO queue/expiry versus immediate eviction at 3 remains unverified; default to queued behavior until discriminating capture.
 - **C-D07 (NEW):** original text size/baseline versus WPF Arial/tall mapping remains unverified and rejected in first preview; do not hardcode arbitrary replacements and call it fixed.
+
+## 8. Owner-supplied screenshot reference addendum
+
+Two owner-uploaded examples (one "Achievement Unlocked!" and one "Achievement Progress") have now been measured and indexed in [owner screenshot calibration](../fixtures/owner-classic-screenshot-calibration.md). The larger screenshot's normalized text position closely agrees with the original VGUI layout anchors (`LabelTitle x88/y25`, `LabelDescription x88/y53`); this does **not** resolve WPF glyph metrics or visual fidelity. Add both named unlock/progress **preview-only** text fixtures to R12. Their original exact Steam build/provenance and rasterization remain unverified. The progress fixture must not be interpreted as a durable GT-610 achievement-progress event. No user image or proprietary icon artwork is redistributed.
