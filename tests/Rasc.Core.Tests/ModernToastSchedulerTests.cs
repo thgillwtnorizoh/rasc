@@ -66,7 +66,9 @@ public sealed class ModernToastSchedulerTests
         Assert.Equal(3, scheduler.ActiveCount);
         Assert.Equal(3, scheduler.WaitingCount);
         var second = scheduler.Advance(TimeSpan.FromMilliseconds(5600));
-        Assert.Equal(new[] { "event-6", "event-5", "event-4" },
+        // P003-C02 owner-target correction: a wave preserves FIFO from
+        // top to bottom. The prior reversed order was a C01 assumption.
+        Assert.Equal(new[] { "event-4", "event-5", "event-6" },
             second.Select(f => f.Event.EventId).ToArray());
         Assert.Equal(0, scheduler.WaitingCount);
         Assert.All(second, f => Assert.Equal(ModernToastStage.Entering, f.Stage));

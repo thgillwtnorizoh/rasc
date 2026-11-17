@@ -63,10 +63,10 @@ public sealed class ModernToastWaveTests
         Assert.Equal("wave-event-1", exiting.Event.EventId);
         Assert.Equal(-35d, exiting.BottomRelativeY);
         var next = s.Advance(TimeSpan.FromMilliseconds(5600));
-        Assert.Equal(2, next.Count);
+        Assert.Collection(next,
+            f => Assert.Equal("wave-event-2", f.Event.EventId),
+            f => Assert.Equal("wave-event-3", f.Event.EventId));
         Assert.All(next, f => Assert.Equal(0, f.BottomRelativeY));
-        Assert.Equal(new[] { "wave-event-2", "wave-event-3" },
-            next.Select(f => f.Event.EventId).ToArray());
     }
 
     [Fact]
