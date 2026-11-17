@@ -38,8 +38,14 @@
               Click="Start_Click"/>
       <Button x:Name="StopButton" Content="Stop" IsEnabled="False"
               Margin="10,0,0,0" Padding="18,9" Click="Stop_Click"/>
-      <CheckBox x:Name="ClassicPopupsCheck" Content="Classic popups" IsChecked="True"
-                Margin="18,0,0,0" VerticalAlignment="Center"/>
+      <TextBlock Text="Popup profile" Margin="18,0,7,0" VerticalAlignment="Center"/>
+      <ComboBox x:Name="ProfileBox" Width="105" VerticalAlignment="Center"
+                SelectionChanged="ProfileBox_SelectionChanged"
+                ToolTip="Applies to new events; existing popups finish in their original style.">
+        <ComboBoxItem Content="Classic" Tag="Classic"/>
+        <ComboBoxItem Content="Modern" Tag="Modern"/>
+        <ComboBoxItem Content="Off" Tag="Off"/>
+      </ComboBox>
       <Button Content="Preview Unlock" Margin="12,0,0,0" Padding="13,9"
               Click="PreviewClassic_Click"
               ToolTip="Uses the owner-supplied unlock screenshot text as a presentation-only fixture."/>
@@ -96,7 +102,7 @@
       <TextBlock x:Name="StatusText" FontWeight="SemiBold" Text="Idle — choose the GC file to begin."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
-                 Text="On first monitoring, existing achievements become the baseline without new popups. Appearance preferences save to local RASC settings; FPS caps do not alter unlock timing. Preview buttons never grant awards or modify the GC file/history."/>
+                 Text="Existing achievements baseline silently. Choose Classic, Modern or Off; changing the profile affects new events only. FPS and sizing apply to both profiles. Previews never grant awards or modify the GC file/history."/>
     </StackPanel>
   </Grid>
 </Window>

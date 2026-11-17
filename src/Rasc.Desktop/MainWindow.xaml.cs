@@ -14,6 +14,10 @@ public partial class MainWindow : Window
     private readonly string _localDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RASC");
     private readonly ClassicToastHost _classicToasts;
+    private readonly ModernToastHost _modernToasts;
+    private readonly NotificationProfileStore _profileStore;
+    private NotificationProfile _profile;
+    private bool _profileControlsReady;
     private readonly ClassicPresentationSettingsStore _presentationStore;
     private ClassicPresentationSettings _presentationSettings;
     private bool _presentationControlsReady;
@@ -29,7 +33,21 @@ public partial class MainWindow : Window
             Path.Combine(_localDirectory, "appearance.json"));
         _presentationSettings = _presentationStore.Load();
         _classicToasts = new ClassicToastHost(Dispatcher);
+        _modernToasts = new ModernToastHost(Dispatcher);
         _classicToasts.SetSettings(_presentationSettings);
+        _modernToasts.SetSettings(_presentationSettings);
+        _profileStore = new NotificationProfileStore(
+            Path.Combine(_localDirectory, "notification-profile.txt"));
+        _profile = _profileStore.Load();
+        foreach (var candidate in ProfileBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+        {
+            if (string.Equals(candidate.Tag?.ToString(), _profile.ToString(), StringComparison.Ordinal))
+            {
+                ProfileBox.SelectedItem = candidate;
+                break;
+            }
+        }
+        _profileControlsReady = true;
         SelectAppearancePreference(AnimationFpsBox, _presentationSettings.AnimationFps);
         SelectAppearancePreference(PopupSizeBox, _presentationSettings.PopupSizePercent);
         _presentationControlsReady = true;
@@ -81,7 +99,12 @@ public partial class MainWindow : Window
                 while (_history.Count > 300) _history.RemoveAt(_history.Count - 1);
                 // Rehydrated historical rows do NOT enter the presentation queue.
                 // This callback runs only for newly observed/pending delivery events.
-                if (ClassicPopupsCheck.IsChecked == true) _classicToasts.Enqueue(item);
+                switch (_profile)
+                {
+                    case NotificationProfile.Classic: _classicToasts.Enqueue(item); break;
+                    case NotificationProfile.Modern: _modernToasts.Enqueue(item); break;
+                    case NotificationProfile.Off: break;
+                }
             });
             _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(() => StatusText.Text = message);
             await _monitor.StartAsync();
@@ -150,6 +173,17 @@ public partial class MainWindow : Window
             catch (Exception ex)
             {
                 ShutdownTrace.Mark("ClassicToastHost dispose error: " + ex.GetType().Name);
+            }
+
+            try
+            {
+                ShutdownTrace.Mark("ModernToastHost.Dispose begin");
+                _modernToasts.Dispose();
+                ShutdownTrace.Mark("ModernToastHost.Dispose complete");
+            }
+            catch (Exception ex)
+            {
+                ShutdownTrace.Mark("ModernToastHost dispose error: " + ex.GetType().Name);
             }
 
             try
@@ -247,19 +281,43 @@ public partial class MainWindow : Window
         if (valid == _presentationSettings) return;
         _presentationSettings = valid;
         _classicToasts.SetSettings(valid);
+        _modernToasts.SetSettings(valid);
         if (!_presentationStore.TrySave(valid))
             StatusText.Text = "Appearance updated for this session; failed to save settings.";
     }
 
+    private void ProfileBox_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_profileControlsReady) return;
+        var selected = (ProfileBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString();
+        if (!Enum.TryParse<NotificationProfile>(selected, out var profile) ||
+            !Enum.IsDefined(profile)) return;
+        if (_profile == profile) return;
+        _profile = profile;
+        if (!_profileStore.TrySave(profile))
+            StatusText.Text = "Popup profile changed this session, but could not be saved.";
+    }
+
     private void PreviewClassic_Click(object sender, RoutedEventArgs e)
     {
-        _classicToasts.PreviewUnlock();
+        switch (_profile)
+        {
+            case NotificationProfile.Classic: _classicToasts.PreviewUnlock(); break;
+            case NotificationProfile.Modern: _modernToasts.PreviewUnlock(); break;
+            case NotificationProfile.Off: StatusText.Text = "Popups are disabled."; break;
+        }
     }
 
     private void PreviewProgress_Click(object sender, RoutedEventArgs e)
     {
-        // Screenshot fixture only: no GC progress or SQLite writes are fabricated.
-        _classicToasts.PreviewProgress();
+        // Display-only fixture; no fabricated GC callbacks or SQLite updates.
+        switch (_profile)
+        {
+            case NotificationProfile.Classic: _classicToasts.PreviewProgress(); break;
+            case NotificationProfile.Modern: _modernToasts.PreviewProgress(); break;
+            case NotificationProfile.Off: StatusText.Text = "Popups are disabled."; break;
+        }
     }
 
     private sealed record UnlockRow(string AchievementId, string Observed);
