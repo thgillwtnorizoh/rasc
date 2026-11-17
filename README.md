@@ -2,7 +2,7 @@
 
 An independent Windows companion for displaying and browsing virtual Counter-Strike: Global Offensive achievements without representing them as Steam-published achievements.
 
-**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C02 Helvetica Regular target + DPI seam correction PASSED Windows CI (48/48); awaiting owner live GUI/font qualification and independent QA; modern renderer deferred.
+**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C03 render-paced slide + fractional-pixel seam correction PASSED Windows CI (56/56); visual design owner-approved, last 3-stack seam and animation smoothness awaiting runtime requalification; independent QA and subsystem acceptance pending.
 
 ## Scope and provenance
 
@@ -25,7 +25,7 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 - **P000:** Steam notification visual and runtime reference investigation. **OPEN**.
   - **P000-C01:** consolidate, independently verify, and publish classic/modern notification reference contracts, their provenance and discrepancies.
 - **P001:** native Windows foundation. **AUTHORIZED / DEVELOPMENT CHECKPOINT** — [Issue #2](https://github.com/thgillwtnorizoh/rasc/issues/2); development tests and Windows build passed, independent QA and owner acceptance pending.
-- **P002:** Classic first renderer **P002-C01**, slide correction **P002-C01-C01**, and font/seam refinement **P002-C01-C02** published, [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3). Its exact original animation/font raster remains **UNVERIFIED**, despite passing CI; modern profile remains planned.
+- **P002:** Classic first renderer **P002-C01**, slide correction **C01**, font calibration **C02**, and display-paced/seam correction **C03** published, [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3). Its exact original animation/font raster remains **UNVERIFIED**, despite passing CI; modern profile remains planned.
 
 Research and checkpoint records belong under `research/P000/` when verified. Maintain recovery notes in-repository. Do not run old Steam client binaries or interact with the installed Steam client as part of static reference analysis.
 
@@ -50,8 +50,8 @@ The app does not modify your CS:GO files or grant Steam achievements. Select the
 
 ## P002 — Classic desktop notification (development, owner-target slide correction)
 
-- [**Latest corrected Windows x64 artifact**](https://github.com/thgillwtnorizoh/rasc/actions/runs/44031682814/artifacts/14305836935) — self-contained WPF app, **48/48 automated tests**, native build and x64 publish passing. **Preview Unlock** and **Preview Progress** are source-independent and never write GC stats or SQLite history.
-- [Current P002 guide](docs/P002/README.md); [P002-C01 original development checkpoint](docs/P002/checkpoints/P002-C01.md); [P002-C01-C01 slide checkpoint](docs/P002/checkpoints/P002-C01-C01.md); [P002-C01-C02 font/seam checkpoint](docs/P002/checkpoints/P002-C01-C02.md); [owner image calibration](docs/P002/fixtures/owner-classic-screenshot-calibration.md).
+- [**Latest corrected Windows x64 artifact**](https://github.com/thgillwtnorizoh/rasc/actions/runs/44046616395/artifacts/14312275576) — self-contained WPF app, **48/48 automated tests**, native build and x64 publish passing. **Preview Unlock** and **Preview Progress** are source-independent and never write GC stats or SQLite history.
+- [Current P002 guide](docs/P002/README.md); [P002-C01 original development checkpoint](docs/P002/checkpoints/P002-C01.md); [P002-C01-C01 slide checkpoint](docs/P002/checkpoints/P002-C01-C01.md); [P002-C01-C02 font checkpoint](docs/P002/checkpoints/P002-C01-C02.md); [P002-C01-C03 render/seam checkpoint](docs/P002/checkpoints/P002-C01-C03.md); [owner-accepted visual baseline](docs/P002/acceptance/visual-design-baseline.md); [owner image calibration](docs/P002/fixtures/owner-classic-screenshot-calibration.md).
 - Classic source reference: `research/P000/classic/reference.md`. The corrected popup uses one clipped stack host, intended flush placement, **no alpha fade or visible strokes**, and user-target motion; **owner-target Helvetica Regular at 11.5 WPF DIPs with Arial fallback, not native-proven**; the source-vintage font conflict, original easing/overflow, exact raster and in-game overlay remain unverified.
 - Existing achievements restored in the history list do **not** trigger new toasts; only newly observed unlock events may do so.
 

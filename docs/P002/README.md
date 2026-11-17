@@ -1,3 +1,28 @@
+# P002-C01-C03 — Current Classic render-paced motion / seam-check build
+
+**Current Windows development:** [CI run 44046616395](https://github.com/thgillwtnorizoh/rasc/actions/runs/44046616395), [self-contained Windows x64 artifact](https://github.com/thgillwtnorizoh/rasc/actions/runs/44046616395/artifacts/14312275576). Exact tested source `984db970f0c6ac9880333606da8195a7d2b57543`. **56 passed / 0 failed / 0 skipped; WPF build + publish + artifact upload PASS**.
+
+**Owner decision (2026-11-17):** Existing C02 card visual design is **OWNER-ACCEPTED VISUAL BASELINE**: Helvetica Regular target, text placement/wrap, icon placeholder geometry, background color and borders. This is **not owner acceptance of P002 functionality**, and is not original Steam fidelity proof. Source: [visual-design baseline](acceptance/visual-design-baseline.md). C03 does **not** change the approved card XAML or styling.
+
+**Remaining correction:** On a 3-card stack the owner still observed a seam at **top–middle**, while **middle–bottom** was flush. A 94-DIP card equals 117.5 physical pixels at 125% scaling (164.5 at 175%); independently snapping the next origin to 118 (or 165) can expose a half-pixel gap only at that junction. This is a **specific reproduction hypothesis**, not verified cause on the owner's actual PC. C03 adds color-matched pixel-snapped underlays behind cards, leaving the accepted text/icons and natural gradient intact. The underlay extends only to the shared screen-pixel boundary and follows the lower card's occlusion. No layout margin/spacing changed.
+
+**Animation rate:** prior C02 `DispatcherTimer.Interval=16ms` nominal 62.5 updates/sec, ~28 updates per 450ms slide; actual physical FPS never measured. C03 uses WPF `CompositionTarget.Rendering` callbacks **only while sliding**, so update cadence follows WPF render opportunities rather than a 16ms timer; 60Hz≈27, 120Hz≈54, 144Hz≈65 theoretical updates/450ms (not guaranteed actual). During static six-second holds a deadline-based `DispatcherTimer` sleeps until the next expiry; no need to redraw 60/120 times per second. All durations, path/easing, FIFO max3 and no-opacity-change behavior retained.
+
+**Low-cost diagnostics:** after closing RASC, inspect `%LOCALAPPDATA%\RASC\last-classic-animation.txt`. It reports animation segments, unique `CompositionTarget.Rendering` callbacks, sampled callback intervals, estimated callback rate and longest interval. **This is NOT proof of displayed FPS**, since WPF could drop frames after the callback; timestamps exclude idle holds. It never captures achievement names or external data, and does not affect SQLite or GC.
+
+### Owner runtime check
+
+1. Unzip the new artifact and run `Rasc.Desktop.exe`. Open **Preview Unlock** three times quickly enough to build a stable 3 stack. Check specifically the **top/middle edge**, then the **middle/bottom edge**, at rest and during push/exit, and compare against C02. Check whether the seam is transparent or simply the original gradient transition.
+2. Observe slide smoothness and scrolling/dropouts with multiple previews. Optionally capture 60/120fps video (actual acquisition may differ from refresh) and record monitor refresh + Windows scaling.
+3. Close RASC and share `last-classic-animation.txt` if useful; this can reveal callback cadence and stalls. No need to earn or reset CS:GO achievements; previews are isolated from the GC and SQLite history.
+4. Verify exit responsiveness, click-through and no orphan window. Real in-game overlay, multi-monitor/DPI and original Steam interpolation are **NOT VERIFIED**.
+
+**Current status:** VERIFIED DEVELOPMENT CHECKPOINT, pending native Windows owner requalification and independent Work 1 QA. [UEP C03 checkpoint](checkpoints/P002-C01-C03.md). P000/P001/P002 remain OPEN; P002's **visual design only** is accepted.
+
+---
+
+## Historical guides (C02 and earlier, superseded for latest artifact)
+
 # P002-C01-C02 — Latest Classic font/seam calibration build
 
 **Current status:** VERIFIED DEVELOPMENT CHECKPOINT (Windows CI **48/48**), **NOT** independently verified or owner GUI-qualified. P002 remains OPEN. [Full C02 checkpoint](checkpoints/P002-C01-C02.md).
