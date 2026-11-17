@@ -2,7 +2,7 @@
 
 An independent Windows companion for displaying and browsing virtual Counter-Strike: Global Offensive achievements without representing them as Steam-published achievements.
 
-**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 passed 117/117 tests. P003-C02 corrects Modern waves, watermark and rare/progress variants in draft PR #7; automated Windows CI passed 124/124 on its corrected implementation, and final preview controls/records require CI qualification. All Modern runtime/independent QA and owner acceptance remain OPEN.
+**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 passed 117/117 tests. P003-C02 corrects Modern waves, watermark and rare/progress variants in draft PR #7; the final C02 source passed Windows CI 124/124 (0 build warnings/errors) and self-contained x64 publish at SHA 391582703a8b1cc8f415aa8eca293aeac0187309. All Modern runtime/independent QA and owner acceptance remain OPEN.
 
 ## Scope and provenance
 

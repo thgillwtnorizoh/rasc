@@ -46,3 +46,10 @@ Owner runtime checklist:
 **P003-C02** replaces C01's provisional independent-slot admission and generic notification contents with owner-observed wave semantics, three distinct card variants, and a stack-aware faint watermark. See [C02 checkpoint](checkpoints/P003-C02.md) and [owner screenshot evidence](../../research/P000/modern/owner-visual-c02.md). C01's 117/117 test result remains historical, not C02 runtime visual proof.
 
 Use the **Modern wave fixture** (1, 2, 3, 6) for reproducible stack/queue preview. **Preview Rare** and **Preview Progress** are display-only. Actual rarity and progress remain unknown from GT-610. Selected style affects only future arrivals. Owner and independent QA remain required.
+
+
+### Latest C02 exact-source development gate
+
+**VERIFIED DEVELOPMENT CHECKPOINT:** [Windows Actions CI 44111688453](https://github.com/thgillwtnorizoh/rasc/actions/runs/44111688453) at source commit **391582703a8b1cc8f415aa8eca293aeac0187309** — 124 tests passed, 0 failed/skipped, WPF Release compiled without warnings/errors, self-contained Windows x64 artifact [14340258031](https://github.com/thgillwtnorizoh/rasc/actions/runs/44111688453/artifacts/14340258031). This includes the C02 one-click 1/2/3/6 wave fixtures.
+
+**Independent QA:** [Work 1 issue #8](https://github.com/thgillwtnorizoh/rasc/issues/8), NOT RUN. **Owner actual Windows visual/gameplay qualification:** NOT RUN. P003 remains OPEN.
