@@ -1,3 +1,27 @@
+# P002-C01-C02 — Latest Classic font/seam calibration build
+
+**Current status:** VERIFIED DEVELOPMENT CHECKPOINT (Windows CI **48/48**), **NOT** independently verified or owner GUI-qualified. P002 remains OPEN. [Full C02 checkpoint](checkpoints/P002-C01-C02.md).
+
+**Latest exact tested production:** `67a6c7bbef1ade46e204da8d8b38e48cf05bd52b`. [Windows CI](https://github.com/thgillwtnorizoh/rasc/actions/runs/44031682814) · [Windows x64 artifact ZIP](https://github.com/thgillwtnorizoh/rasc/actions/runs/44031682814/artifacts/14305836935).
+
+### What changed since C01-C01
+
+- **Owner target Helvetica Regular** for both headline and body (Windows will fall back to Arial if Helvetica is unavailable), `FontSize=11.5` WPF DIPs and `LineHeight=12.5` DIPs, **Normal** weight instead of prior bold. These sizes are estimates from reference screenshot glyph proportions, not independent Steam font proof. Original pinned May 2023 `FriendsSmall` specifies Arial/tall12/weight800; contradiction **C-D09** remains open.
+- **Preview Unlock:** `Achievement Unlocked!` should occupy **one** headline line; `Someone Set Up Us The Bomb` should wrap to two body lines.
+- **Preview Progress:** `Achievement Progress` should occupy **one** headline line; body naturally wraps `Paranatural Collection (20,010/100,000)` into two lines. This is a visual-only preview; no durable progress events are created.
+- **Apparent gap:** owner's 228×166 screenshot contains a lower-card gradient at row~83 and 14px blank icon/top inset before y~98; this is **within** the card rather than a proven 14px transparent margin. Original source icon y14 is preserved. An integer physical-pixel origin/clip mapper adds 13 parameterized DPI tests to prevent *actual* subpixel seams at 100–200% scaling; WPF physical screen QA remains pending.
+- No change to full-height slide, three-card FIFO, source read-only monitor, persistent SQLite history or no-fade policy.
+
+### What to test
+
+Extract the latest ZIP, start `Rasc.Desktop.exe`, then use **Preview Unlock** and **Preview Progress** without monitoring to compare one-line headlines and two-line body against your reference uploads. Trigger two previews close together and inspect the area between cards carefully: does it show a **transparent line exposing the desktop**, or merely the lower card's darker-to-lighter gradient and original 14px top padding? If possible include a screenshot and your Windows DPI/display scale. Never reset the GC file to force test events.
+
+**Do not copy screenshots or proprietary Helvetica/Steam fonts into the repository/application**; only measurements and provenance notes are retained.
+
+---
+
+## Historical C01-C01 instructions (superseded by the latest C02 build)
+
 # P002-C01-C01 — Owner-target Classic desktop notification correction
 
 **Campaign:** P002 — Classic notification rendering. **Actor:** Work 2 development and own regression, NOT independent Work 1 QA. **Assignment:** [Issue #3](https://github.com/thgillwtnorizoh/rasc/issues/3). **Status:** **VERIFIED DEVELOPMENT CHECKPOINT**: source compiled, tests pass, artifact published; user GUI qualification and source-perfect visual equivalence **NOT VERIFIED**.

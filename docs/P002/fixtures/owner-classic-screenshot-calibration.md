@@ -71,3 +71,13 @@ Both screenshot samples have **headline and body glyph ink starting at almost th
 For a **visual-target engineering profile only**, initialize both title and body as left-aligned at their source x88 column; retain a compatibility switch/explicit comment for source `center` if independent reference validation requires it. Test the uploaded screenshot's headline/body left-edge near-equality before claiming target parity. The WPF first prototype title was center aligned and its body default-weight, whereas the source applies the `FriendsSmall` weight800 font to **both** labels. Make body weight consistent with the resource in the next corrected prototype; font rasterization and glyph heights still require runtime comparison.
 
 **C-D08 (NEW):** source `LabelTitle` alignment CENTER vs both user-supplied screenshots' **apparently left-aligned headline**; exact build or runtime/control overrides not independently established.
+
+## C02 additional owner screenshot and Helvetica Regular research
+
+- Owner RASC screen crop `image(3).png`: 228×166 RGB; SHA-256 `ea8a9106756029dd98b818d4663f3dafac7b91df9ecb5a36b57b8c146b18df35`. Very bold two-line `Achievement Progress` and two-line `Achievement Unlocked!` appear unlike the one-line historical reference headings.
+- Pixel check: upper card lower row~81 = `#121A2A`, lower card begins gradient at rows~83/84 = approximately `#292D32` and `#2A2E33`. Lower icon begins near row98. The 14px band is the lower popup's own source-anchored **top padding**, not an established transparent inter-card gap. Physical pixel seams at fractional scaling still require native runtime testing.
+- Owner reports digging found **Helvetica Regular**. The archived pinned May 2023 FriendsSmall scheme remains Arial/tall12/weight800, so provenance/version **C-D09** stays open; do not assert Helvetica is confirmed on the archived build.
+- Approximate screenshot-based font-size calibration: image1 unlock title ink 139px / 1.146 ≈121 nominal units; image2 progress title ink 194px / 1.708 ≈114. First body line ink ≈128 and ≈109 nominal units respectively. A Helvetica-like Regular 11–12 unit glyph width is compatible; **11.5 WPF DIPs**, **12.5 line height**, **Regular** is a bounded candidate, not measured WPF/native pixel fidelity. If Helvetica is unavailable on Windows, explicit Arial fallback occurs.
+- The C02 desktop compositor converts origin and clip edges to the same integer physical-pixel grid at runtime DPI scale. Unit checks include 100%,125%,150%,175%,200% scaling. These tests verify mathematical boundary continuity, not the owner's actual rendered desktop pixels.
+
+See [C02 checkpoint](../checkpoints/P002-C01-C02.md) for exact tested source, 48-test CI and acceptance boundaries.
