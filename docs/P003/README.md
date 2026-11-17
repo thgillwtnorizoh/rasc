@@ -71,3 +71,14 @@ C03's normal foreground application positioning was a CONFIRMED OWNER REGRESSION
 Modern symbol is now the actual recognizable Steam mark geometry (Simple Icons CC0 vector, Valve trademark); its 1/2/3 wave position is unchanged. Rare glow is continuous rotating conic gold with a stationary square halo mask, rather than five orbiting points. Original desktop-toast CSS reuse and screenshot fidelity remain unverified.
 
 [Checkpoint](checkpoints/P003-C03-C01.md), [owner evidence](../../research/P000/modern/owner-c03-c01-correction.md), [Work 1 QA #14](https://github.com/thgillwtnorizoh/rasc/issues/14). [CI 44123158624](https://github.com/thgillwtnorizoh/rasc/actions/runs/44123158624): 133/133, 0 WPF warnings/errors, Windows x64 publish PASS at exact source 8d3132e54a7086db6a72001629309d305c63ff57.
+
+
+## C03-C02 — Serialized renderer handoff and source-derived progress
+
+[Issue #15](https://github.com/thgillwtnorizoh/rasc/issues/15) / [draft PR #16](https://github.com/thgillwtnorizoh/rasc/pull/16) / [checkpoint](checkpoints/P003-C03-C02.md) / [reference record](../../research/P000/modern/progress-svg-and-c03-c02.md). Earlier C03-C01 desktop/fullscreen-only positioning is preserved.
+
+Changing Classic/Modern affects **new** notifications; a currently showing old-style notification finishes before the new style gets its own HWND. Same-style arrivals continue into that style's scheduler immediately. Distinct styles never have on-screen HWNDs concurrently. The effect is not guaranteed original Steam behavior; it is an explicit RASC reliability policy prompted by an owner-observed crash.
+
+The progress medal uses an offline WPF reconstruction of the Steam UI's Achievement 36x36 SVG icon; progress fraction is minimum-relative. Rare light uses source-inspired masks/6s/18s animation but not the original proprietary PNGs or overlay compositor.
+
+[Exact-source Windows CI 44137221353](https://github.com/thgillwtnorizoh/rasc/actions/runs/44137221353): 138/138 core PASS, 4/4 WPF HWND smoke PASS, WPF Release 0 warnings/errors, self-contained x64 artifact 14352028743 PASS at source SHA 50fdf70fa7851ce07cf49b760d5b7c9ce940d44d. [Independent QA #17](https://github.com/thgillwtnorizoh/rasc/issues/17) and owner real Windows validation remain NOT RUN.
