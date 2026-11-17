@@ -12,8 +12,9 @@ public sealed record ClassicPresentationSettings(int AnimationFps = 0, int Popup
 {
     public static readonly int[] SupportedFps = [0, 30, 60, 90, 120, 144, 165, 240];
     public static readonly int[] SupportedSizes = [0, 100, 125, 150, 175, 200, 250];
+    public static bool IsValidFps(int fps) => fps == 0 || fps is >= 15 and <= 240;
     public ClassicPresentationSettings Validated() => new(
-        SupportedFps.Contains(AnimationFps) ? AnimationFps : 0,
+        IsValidFps(AnimationFps) ? AnimationFps : 0,
         SupportedSizes.Contains(PopupSizePercent) ? PopupSizePercent : 0);
 }
 
@@ -98,24 +99,40 @@ public static class ClassicPopupScale
 /// </summary>
 public sealed class ClassicAnimationFrameGate
 {
-    private TimeSpan? _lastApplied;
-    public void Reset() => _lastApplied = null;
+    private TimeSpan? _nextTarget;
+    private TimeSpan? _previousObservation;
+
+    public void Reset()
+    {
+        _nextTarget = null;
+        _previousObservation = null;
+    }
 
     public bool ShouldApply(TimeSpan now, int fps)
     {
-        if (now < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(now));
-        if (!ClassicPresentationSettings.SupportedFps.Contains(fps))
+        if (now < TimeSpan.Zero ||
+            (_previousObservation.HasValue && now < _previousObservation.Value))
+            throw new ArgumentOutOfRangeException(nameof(now),
+                "Rendering time must be monotonic.");
+        if (!ClassicPresentationSettings.IsValidFps(fps))
             throw new ArgumentOutOfRangeException(nameof(fps));
-        if (fps == 0 || !_lastApplied.HasValue)
+        _previousObservation = now;
+        if (fps == 0) return true;
+
+        // Anchor to a virtual target timeline, NOT the previous callback.
+        // At 123Hz composition and a 120 FPS target, naive last-callback
+        // spacing would drop to ~61 FPS. This phase accumulator instead
+        // skips only enough callbacks to approach the requested AVERAGE rate.
+        var period = TimeSpan.TicksPerSecond / fps;
+        if (!_nextTarget.HasValue)
         {
-            _lastApplied = now;
+            _nextTarget = now + TimeSpan.FromTicks(period);
             return true;
         }
-        if (now < _lastApplied.Value)
-            throw new ArgumentOutOfRangeException(nameof(now), "Rendering time must be monotonic.");
-        var minTicks = TimeSpan.TicksPerSecond / fps;
-        if (now.Ticks - _lastApplied.Value.Ticks < minTicks) return false;
-        _lastApplied = now;
+        if (now < _nextTarget.Value) return false;
+
+        var periodsElapsed = (now.Ticks - _nextTarget.Value.Ticks) / period + 1;
+        _nextTarget = _nextTarget.Value + TimeSpan.FromTicks(periodsElapsed * period);
         return true;
     }
 }

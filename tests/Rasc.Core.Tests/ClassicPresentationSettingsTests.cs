@@ -16,7 +16,7 @@ public sealed class ClassicPresentationSettingsTests
     [Theory]
     [InlineData(-1, -1)]
     [InlineData(999, 999)]
-    [InlineData(61, 133)]
+    [InlineData(241, 133)]
     public void InvalidPresetsIndependentlyFallBackToAuto(int fps, int size)
     {
         var value = new ClassicPresentationSettings(fps, size).Validated();
@@ -126,6 +126,46 @@ public sealed class ClassicPresentationSettingsTests
         Assert.Equal(1, ClassicPopupScale.Resolve(screen, 1920, 1080, 0));
     }
 
+        [Theory]
+    [InlineData(15)]
+    [InlineData(75)]
+    [InlineData(100)]
+    [InlineData(123)]
+    [InlineData(239)]
+    public void CustomIntegerFrameRatesAreAllowed(int fps)
+    {
+        Assert.True(ClassicPresentationSettings.IsValidFps(fps));
+        Assert.Equal(fps, new ClassicPresentationSettings(fps, 0).Validated().AnimationFps);
+    }
+
+    [Fact]
+    public void CustomFpsPersistsAcrossRestart()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rasc-custom-fps-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var path = Path.Combine(folder, "appearance.json");
+            var store = new ClassicPresentationSettingsStore(path);
+            Assert.True(store.TrySave(new ClassicPresentationSettings(123, 0)));
+            Assert.Equal(123, new ClassicPresentationSettingsStore(path).Load().AnimationFps);
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [Fact]
+    public void PhaseAccumulationAvoidsHalfRefreshRateWhenCapping123HzTo120()
+    {
+        var limiter = new ClassicAnimationFrameGate();
+        var accepted = 0;
+        for (var ms = 0.0; ms <= 1000; ms += 1000.0 / 123.3)
+        {
+            if (limiter.ShouldApply(TimeSpan.FromTicks(
+                    (long)(ms * TimeSpan.TicksPerMillisecond)), 120))
+                accepted++;
+        }
+        Assert.InRange(accepted, 115, 121);
+    }
+
     [Fact]
     public void GateCapsVisualUpdatesWithoutChangingStopwatchTimeline()
     {
@@ -161,8 +201,9 @@ public sealed class ClassicPresentationSettingsTests
                     accepted.Add(instant);
             }
             for (var i = 1; i < accepted.Count; i++)
-                Assert.True((accepted[i] - accepted[i - 1]).Ticks >=
-                    TimeSpan.TicksPerSecond / fps);
+                Assert.True(accepted[i] > accepted[i - 1]);
+            // A phase-accumulated target caps average updates, while
+            // allowing slightly uneven *individual* frame intervals.
             Assert.InRange(accepted.Count, 1, fps + 1);
         }
     }

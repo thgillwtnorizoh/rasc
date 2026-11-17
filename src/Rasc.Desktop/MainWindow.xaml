@@ -49,8 +49,11 @@
       </WrapPanel>
       <WrapPanel Margin="0,10,0,0" Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock VerticalAlignment="Center" Text="Animation FPS" Margin="0,0,8,0"/>
-        <ComboBox x:Name="AnimationFpsBox" Width="154" SelectionChanged="AnimationFpsBox_SelectionChanged"
-                  ToolTip="Display-synced uses every WPF render opportunity. Numbers are maximum update rates; actual displayed FPS is not guaranteed.">
+        <ComboBox x:Name="AnimationFpsBox" Width="164" IsEditable="True" IsTextSearchEnabled="False"
+                  SelectionChanged="AnimationFpsBox_SelectionChanged"
+                  LostKeyboardFocus="AnimationFpsBox_LostKeyboardFocus"
+                  KeyDown="AnimationFpsBox_KeyDown"
+                  ToolTip="Display-synced or type any integer FPS from 15 to 240. A target controls average animation updates, not guaranteed displayed frames.">
           <ComboBoxItem Content="Display-synced" Tag="0"/>
           <ComboBoxItem Content="30 FPS cap" Tag="30"/>
           <ComboBoxItem Content="60 FPS cap" Tag="60"/>

@@ -182,7 +182,45 @@ public partial class MainWindow : Window
                 return;
             }
         }
-        box.SelectedIndex = 0;
+        box.SelectedIndex = -1;
+        if (box.IsEditable) box.Text = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        else box.SelectedIndex = 0;
+    }
+
+    private void AnimationFpsBox_LostKeyboardFocus(object sender,
+        System.Windows.Input.KeyboardFocusChangedEventArgs e) => CommitTypedAnimationFps();
+
+    private void AnimationFpsBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key is System.Windows.Input.Key.Enter or System.Windows.Input.Key.Return)
+        {
+            CommitTypedAnimationFps();
+            e.Handled = true;
+        }
+    }
+
+    private void CommitTypedAnimationFps()
+    {
+        if (!_presentationControlsReady) return;
+        var entry = AnimationFpsBox.Text.Trim();
+        var selected = AnimationFpsBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
+        if (selected?.Content?.ToString() == entry) return; // a selected preset
+        if (entry.Equals("Display-synced", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdatePresentationSettings(_presentationSettings with { AnimationFps = 0 });
+            SelectAppearancePreference(AnimationFpsBox, 0);
+            return;
+        }
+        if (int.TryParse(entry, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var fps) &&
+            ClassicPresentationSettings.IsValidFps(fps))
+        {
+            UpdatePresentationSettings(_presentationSettings with { AnimationFps = fps });
+            SelectAppearancePreference(AnimationFpsBox, fps);
+            return;
+        }
+        SelectAppearancePreference(AnimationFpsBox, _presentationSettings.AnimationFps);
+        StatusText.Text = "Enter Display-synced or a whole FPS number from 15 to 240.";
     }
 
     private void AnimationFpsBox_SelectionChanged(object sender,
