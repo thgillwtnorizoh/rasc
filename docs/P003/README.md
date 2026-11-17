@@ -53,3 +53,12 @@ Use the **Modern wave fixture** (1, 2, 3, 6) for reproducible stack/queue previe
 **VERIFIED DEVELOPMENT CHECKPOINT:** [Windows Actions CI 44111688453](https://github.com/thgillwtnorizoh/rasc/actions/runs/44111688453) at source commit **391582703a8b1cc8f415aa8eca293aeac0187309** — 124 tests passed, 0 failed/skipped, WPF Release compiled without warnings/errors, self-contained Windows x64 artifact [14340258031](https://github.com/thgillwtnorizoh/rasc/actions/runs/44111688453/artifacts/14340258031). This includes the C02 one-click 1/2/3/6 wave fixtures.
 
 **Independent QA:** [Work 1 issue #8](https://github.com/thgillwtnorizoh/rasc/issues/8), NOT RUN. **Owner actual Windows visual/gameplay qualification:** NOT RUN. P003 remains OPEN.
+
+
+## C03 — Active foreground application and visual corrections
+
+[Development PR #10](https://github.com/thgillwtnorizoh/rasc/pull/10) / [C03 checkpoint](checkpoints/P003-C03.md) supersede C02's primary-work-area-only popup position. Both profiles use read-only foreground Win32 visible-window/monitor geometry and native pixel placement, reanchoring during holds. Fullscreen-sized foreground windows use the entire display edge; ordinary windowed apps use visible bounds clipped to work area. Automatic scale is tied to foreground app height.
+
+Modern changes: correct C02's implausible manually sketched logo with improved mechanical geometry (still not original asset-equivalent), remove blue icon frame, animate diffuse rare gold instead of solid yellow frame, add miniature progress medal left of (current/max). Existing 1/2/3 wave rules, visual preview fixtures and read-only history are preserved.
+
+[Windows CI 44118029224](https://github.com/thgillwtnorizoh/rasc/actions/runs/44118029224) passed 132/132 and native x64 publish at source 43e598ad97a25fb4230349e852016f976f1e725b. [QA assignment #11](https://github.com/thgillwtnorizoh/rasc/issues/11). Physical visibility over **true exclusive fullscreen** remains unsupported/unverified for WPF; borderless fullscreen and mixed-DPI monitors need owner runtime checks.
