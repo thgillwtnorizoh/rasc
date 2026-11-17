@@ -13,7 +13,7 @@ public sealed class ClassicToastSchedulerTests
         Assert.Single(s.Advance(TimeSpan.FromMilliseconds(ms)));
 
     private static ClassicToastFrame ById(IEnumerable<ClassicToastFrame> frames, int id) =>
-        Assert.Single(frames.Where(x => x.Event.EventId == $"event-{id}"));
+        Assert.Single(frames, x => x.Event.EventId == $"event-{id}");
 
     [Fact]
     public void SourceDurationsAndCapacityRemainUnchanged()
@@ -98,7 +98,7 @@ public sealed class ClassicToastSchedulerTests
     {
         var s = new ClassicToastScheduler();
         for (int i=1;i<=4;i++) s.Enqueue(E(i));
-        Assert.Equal(1, s.Advance(TimeSpan.Zero).Count);
+        Assert.Single(s.Advance(TimeSpan.Zero));
         Assert.Equal(3, s.Advance(TimeSpan.FromMilliseconds(1350)).Count);
         Assert.Equal(1, s.WaitingCount);
         var begin = s.Advance(TimeSpan.FromMilliseconds(6450));
