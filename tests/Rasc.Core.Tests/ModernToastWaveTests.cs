@@ -57,7 +57,7 @@ public sealed class ModernToastWaveTests
         s.Advance(TimeSpan.FromSeconds(1));
         s.Enqueue(E(2));
         s.Enqueue(E(3));
-        Assert.Equal(1, s.Advance(TimeSpan.FromSeconds(3)).Count);
+        Assert.Single(s.Advance(TimeSpan.FromSeconds(3)));
         Assert.Equal(2, s.WaitingCount);
         var exiting = Assert.Single(s.Advance(TimeSpan.FromMilliseconds(5450)));
         Assert.Equal("wave-event-1", exiting.Event.EventId);

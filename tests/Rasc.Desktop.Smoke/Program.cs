@@ -194,8 +194,13 @@ internal static class Program
             interval.Start();
             app.Run();
             if (fault is not null) Console.Error.WriteLine(fault);
-            if ((scenario != "modern-progress" && !classicObserved) ||
-                (scenario != "classic-only" && !modernObserved))
+            // An idle Modern->Classic switch MUST NOT create any Modern
+            // HWND. Require Modern observation only for scenarios that
+            // actually request a Modern presentation.
+            bool requireClassic = scenario != "modern-progress";
+            bool requireModern = scenario is "modern-classic" or "modern-progress";
+            if ((requireClassic && !classicObserved) ||
+                (requireModern && !modernObserved))
             {
                 failed = true;
                 Console.Error.WriteLine("Required visual HWND observations not reached.");
