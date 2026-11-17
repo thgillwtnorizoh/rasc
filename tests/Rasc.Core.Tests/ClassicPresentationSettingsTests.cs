@@ -208,6 +208,34 @@ public sealed class ClassicPresentationSettingsTests
         }
     }
 
+    [Theory]
+    [InlineData(1.0, 1.0)]
+    [InlineData(1.0, 1.3333333333333333)]
+    [InlineData(1.25, 1.0666666666666667)]
+    [InlineData(1.25, 1.5)]
+    [InlineData(1.5, 2.0)]
+    [InlineData(1.75, 2.5)]
+    public void ScaledThreeCardStackRemainsPixelContiguous(double windowsDpi, double visualScale)
+    {
+        var scheduler = new ClassicToastScheduler();
+        for (var i = 1; i <= 3; i++)
+            Assert.True(scheduler.Enqueue(new UnlockEvent(
+                $"scaled-{i}", "test", $"ACH_{i}", (uint)i,
+                DateTimeOffset.FromUnixTimeSeconds(i + 100))));
+        scheduler.Advance(TimeSpan.Zero);
+        var frames = scheduler.Advance(TimeSpan.FromMilliseconds(1350))
+            .OrderBy(f => f.Y).ToArray();
+        Assert.Equal(3, frames.Length);
+        var effectiveDpi = windowsDpi * visualScale;
+        for (var i = 0; i < 2; i++)
+        {
+            var upper = ClassicToastPixelGrid.Map(frames[i], effectiveDpi);
+            var lower = ClassicToastPixelGrid.Map(frames[i + 1], effectiveDpi);
+            Assert.Equal(upper.VisibleBottom, lower.VisibleTop);
+            Assert.Equal(upper.VisibleBottom, lower.OriginY);
+        }
+    }
+
     [Fact]
     public void GateRejectsInvalidTargetsAndClockReversal()
     {

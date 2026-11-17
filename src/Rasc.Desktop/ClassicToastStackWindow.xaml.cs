@@ -32,6 +32,8 @@ public partial class ClassicToastStackWindow : Window
     private const int WmDpiChanged = 0x02E0;
     private const int WmDisplayChange = 0x007E;
     private const int WmSettingChange = 0x001A;
+
+    public event EventHandler? DisplayMetricsChanged;
     private static readonly Brush BackplateBrush = CreateBackplateBrush();
 
     private static Brush CreateBackplateBrush()
@@ -169,8 +171,12 @@ public partial class ClassicToastStackWindow : Window
         {
             // WPF processes the DPI change first. Reanchor afterwards using
             // current primary work-area and logical display dimensions.
-            _ = Dispatcher.BeginInvoke(new Action(PositionOnPrimaryWorkArea),
-                System.Windows.Threading.DispatcherPriority.Loaded);
+            _ = Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!IsLoaded) return;
+                PositionOnPrimaryWorkArea();
+                DisplayMetricsChanged?.Invoke(this, EventArgs.Empty);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
         return IntPtr.Zero;
     }

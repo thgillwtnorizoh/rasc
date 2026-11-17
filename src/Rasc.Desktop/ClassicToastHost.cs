@@ -121,6 +121,13 @@ internal sealed class ClassicToastHost : IDisposable
         Tick();
     }
 
+    private void OnDisplayMetricsChanged(object? sender, EventArgs e)
+    {
+        // Reapply all clipped card geometry using the new DPI * user scale.
+        // Display changes never generate unlock events or restart their timers.
+        if (!_disposed) Tick();
+    }
+
     private void OnHoldWake(object? sender, EventArgs e)
     {
         _holdWake.Stop();
@@ -177,8 +184,12 @@ internal sealed class ClassicToastHost : IDisposable
 
         if (frames.Count == 0)
         {
-            _window?.Close();
-            _window = null;
+            if (_window is not null)
+            {
+                _window.DisplayMetricsChanged -= OnDisplayMetricsChanged;
+                _window.Close();
+                _window = null;
+            }
         }
         else
         {
@@ -186,6 +197,7 @@ internal sealed class ClassicToastHost : IDisposable
             {
                 _window = new ClassicToastStackWindow();
                 _window.SetPopupSizePercent(_popupSizePercent);
+                _window.DisplayMetricsChanged += OnDisplayMetricsChanged;
                 _window.Show();
             }
             foreach (var frame in frames)
@@ -262,8 +274,12 @@ internal sealed class ClassicToastHost : IDisposable
         _holdWake.Stop();
         _holdWake.Tick -= OnHoldWake;
         _schedule.Clear();
-        _window?.Close();
-        _window = null;
+        if (_window is not null)
+        {
+            _window.DisplayMetricsChanged -= OnDisplayMetricsChanged;
+            _window.Close();
+            _window = null;
+        }
         _cards.Clear();
         _text.Clear();
         WriteRenderDiagnostics();
