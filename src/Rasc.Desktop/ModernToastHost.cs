@@ -83,6 +83,28 @@ internal sealed class ModernToastHost : IDisposable
     internal void PreviewProgress() =>
         Enqueue(PreviewEvent(), ModernToastContent.Progress("Arrest Warrant", 19, 50));
 
+    internal void PreviewWave(int count)
+    {
+        if (count is not (1 or 2 or 3 or 6))
+            throw new ArgumentOutOfRangeException(nameof(count));
+        ModernToastContent[] examples =
+        [
+            ModernToastContent.Unlock("Champion", "Win 100 games."),
+            ModernToastContent.Unlock("Interstellar",
+                "Accumulate one mile of distance.", isRare: true),
+            ModernToastContent.Unlock("NEW_ACHIEVEMENT_NAME_0_4",
+                "NEW_ACHIEVEMENT_DESC_0_4"),
+            ModernToastContent.Unlock("Champion", "Win 100 games."),
+            ModernToastContent.Unlock("Interstellar",
+                "Accumulate one mile of distance.", isRare: true),
+            ModernToastContent.Progress("Arrest Warrant", 19, 50)
+        ];
+        // This callback is synchronous: all N fixtures enter the same 45ms
+        // admission batch, and events beyond 3 await the following wave.
+        for (var index = 0; index < count; index++)
+            Enqueue(PreviewEvent(), examples[index]);
+    }
+
     private static UnlockEvent PreviewEvent() =>
         new("modern-preview-" + Guid.NewGuid().ToString("N"),
             "rasc-local-preview", "REFERENCE-FIXTURE-NOT-AN-AWARD",

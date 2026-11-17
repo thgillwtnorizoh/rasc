@@ -39,3 +39,10 @@ Owner runtime checklist:
 7. Check behavior under scaling, monitor changes, normal desktop and fullscreen/borderless gameplay; report visible failures.
 
 **Stop condition:** only report VERIFIED DEVELOPMENT CHECKPOINT after exact-source automated CI/build success. Human acceptance and Work 1 independent QA are separate gates. Preserve the full P002 suite.
+
+
+## C02 superseding owner-target behavior (separate from historical C01 record)
+
+**P003-C02** replaces C01's provisional independent-slot admission and generic notification contents with owner-observed wave semantics, three distinct card variants, and a stack-aware faint watermark. See [C02 checkpoint](checkpoints/P003-C02.md) and [owner screenshot evidence](../../research/P000/modern/owner-visual-c02.md). C01's 117/117 test result remains historical, not C02 runtime visual proof.
+
+Use the **Modern wave fixture** (1, 2, 3, 6) for reproducible stack/queue preview. **Preview Rare** and **Preview Progress** are display-only. Actual rarity and progress remain unknown from GT-610. Selected style affects only future arrivals. Owner and independent QA remain required.
