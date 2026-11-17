@@ -66,7 +66,9 @@ public sealed class ModernToastSchedulerTests
         Assert.Equal(3, scheduler.ActiveCount);
         Assert.Equal(3, scheduler.WaitingCount);
         var second = scheduler.Advance(TimeSpan.FromMilliseconds(5600));
-        Assert.Equal(new[] { "event-6", "event-5", "event-4" },
+        // P003-C02 owner-target correction: a wave preserves FIFO from
+        // top to bottom. The prior reversed order was a C01 assumption.
+        Assert.Equal(new[] { "event-4", "event-5", "event-6" },
             second.Select(f => f.Event.EventId).ToArray());
         Assert.Equal(0, scheduler.WaitingCount);
         Assert.All(second, f => Assert.Equal(ModernToastStage.Entering, f.Stage));
@@ -131,16 +133,18 @@ public sealed class ModernToastSchedulerTests
     }
 
     [Fact]
-    public void SlotsAreDistinctAndNewestAtBottom()
+    public void SlotsAreDistinctAndOldestAtTopInOneWave()
     {
         var scheduler = new ModernToastScheduler();
         scheduler.Enqueue(Event(1));
         scheduler.Enqueue(Event(2));
         scheduler.Enqueue(Event(3));
         var frames = scheduler.Advance(TimeSpan.FromMilliseconds(300));
-        Assert.Equal(new[] { "event-3", "event-2", "event-1" },
+        // C02 owner-target wave: events emitted in one batch preserve FIFO
+        // from top to bottom instead of P003-C01's arbitrary reversed order.
+        Assert.Equal(new[] { "event-1", "event-2", "event-3" },
             frames.Select(f => f.Event.EventId).ToArray());
-        Assert.Equal(new[] { -70.0, -140.0, -210.0 },
+        Assert.Equal(new[] { -210.0, -140.0, -70.0 },
             frames.Select(f => f.BottomRelativeY).ToArray());
     }
 }

@@ -8,18 +8,18 @@ using Rasc.Core;
 namespace Rasc.Desktop;
 
 /// <summary>
-/// Modern NORMAL desktop achievement presentation. Uses one non-activating
-/// window per toast and time-based scheduling. There is no Steam injection,
-/// sound playback, display-alone handling or claim of original raster parity.
+/// P003-C02 normal desktop-only Modern host: one bounded wave at a time,
+/// separate click-through HWNDs, and delayed batching of same-burst events.
+/// No native Steam client, sound, GC data modification or in-game injection.
 /// </summary>
 internal sealed class ModernToastHost : IDisposable
 {
-    private sealed record Content(string Title, string Description);
     private readonly ModernToastScheduler _schedule = new();
     private readonly Dictionary<string, ModernToastWindow> _windows = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Content> _content = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ModernToastContent> _content = new(StringComparer.Ordinal);
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly DispatcherTimer _holdWake;
+    private readonly DispatcherTimer _batchWake;
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private TimeSpan? _lastRenderTime;
     private int _fpsCap;
@@ -31,6 +31,14 @@ internal sealed class ModernToastHost : IDisposable
     {
         _holdWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher);
         _holdWake.Tick += OnHoldWake;
+        // Coalesce events emitted in one GT-610 reconciliation/burst so that
+        // three adjacent awards can begin in the SAME wave. This 45ms delay
+        // is an ENGINEERING value; it is not an original Steam constant.
+        _batchWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(45)
+        };
+        _batchWake.Tick += OnBatchWake;
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
@@ -42,32 +50,73 @@ internal sealed class ModernToastHost : IDisposable
         _fpsCap = valid.AnimationFps;
         _sizePercent = valid.PopupSizePercent;
         _frameGate.Reset();
-        Tick(); // Relayout, not a new notification.
+        if (!_batchWake.IsEnabled) Tick(); // only relayout, never restart a wave
     }
 
     internal void Enqueue(UnlockEvent evt) =>
-        Enqueue(evt, "Achievement unlocked", evt.AchievementId);
+        Enqueue(evt, ModernToastContent.Unlock(evt.AchievementId, ""));
 
-    private void Enqueue(UnlockEvent evt, string title, string description)
+    private void Enqueue(UnlockEvent evt, ModernToastContent content)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        Tick(); // Rebase an idle scheduler to the current monotonic clock.
+
+        if (_schedule.IsIdle && !_batchWake.IsEnabled)
+            Tick(); // rebase the monotonic scheduler before any new event
         if (!_schedule.Enqueue(evt)) return;
-        _content[evt.EventId] = new Content(title, description);
-        Tick();
+        _content.Add(evt.EventId, content);
+
+        if (_schedule.ActiveCount == 0 && !_batchWake.IsEnabled)
+            _batchWake.Start();
+        // During an existing wave, arrivals are queued. The scheduler's
+        // next wave cannot be admitted until all active members leave.
     }
 
     internal void PreviewUnlock() =>
-        Enqueue(PreviewEvent(), "Achievement unlocked", "Someone Set Up Us The Bomb");
+        Enqueue(PreviewEvent(),
+            ModernToastContent.Unlock("Champion", "Win 100 games."));
+
+    internal void PreviewRare() =>
+        Enqueue(PreviewEvent(),
+            ModernToastContent.Unlock("Interstellar",
+                "Accumulate one mile of distance.", isRare: true));
 
     internal void PreviewProgress() =>
-        Enqueue(PreviewEvent(), "Achievement progress",
-            "Paranatural Collection (20,010/100,000)");
+        Enqueue(PreviewEvent(), ModernToastContent.Progress("Arrest Warrant", 19, 50));
+
+    internal void PreviewWave(int count)
+    {
+        if (count is not (1 or 2 or 3 or 6))
+            throw new ArgumentOutOfRangeException(nameof(count));
+        ModernToastContent[] examples =
+        [
+            ModernToastContent.Unlock("Champion", "Win 100 games."),
+            ModernToastContent.Unlock("Interstellar",
+                "Accumulate one mile of distance.", isRare: true),
+            ModernToastContent.Unlock("NEW_ACHIEVEMENT_NAME_0_4",
+                "NEW_ACHIEVEMENT_DESC_0_4"),
+            ModernToastContent.Unlock("Champion", "Win 100 games."),
+            ModernToastContent.Unlock("Interstellar",
+                "Accumulate one mile of distance.", isRare: true),
+            ModernToastContent.Progress("Arrest Warrant", 19, 50)
+        ];
+        // This callback is synchronous: all N fixtures enter the same 45ms
+        // admission batch, and events beyond 3 await the following wave.
+        for (var index = 0; index < count; index++)
+            Enqueue(PreviewEvent(), examples[index]);
+    }
 
     private static UnlockEvent PreviewEvent() =>
         new("modern-preview-" + Guid.NewGuid().ToString("N"),
             "rasc-local-preview", "REFERENCE-FIXTURE-NOT-AN-AWARD",
             0, DateTimeOffset.UtcNow);
+
+    private void OnBatchWake(object? sender, EventArgs args)
+    {
+        _batchWake.Stop();
+        if (_schedule.ActiveCount == 0 && _schedule.WaitingCount > 0)
+            _schedule.AlignPendingWaveStart(_clock.Elapsed);
+        Tick();
+    }
 
     private void OnRendering(object? sender, EventArgs args)
     {
@@ -138,9 +187,13 @@ internal sealed class ModernToastHost : IDisposable
     private void Tick()
     {
         if (_disposed) return;
+        // Before the first wave, avoid dispatch events from opening a partial
+        // wave before the short burst-collection timer has elapsed.
+        if (_batchWake.IsEnabled && _schedule.ActiveCount == 0) return;
+
         var frames = _schedule.Advance(_clock.Elapsed);
-        var visible = new HashSet<string>(frames.Select(f => f.Event.EventId),
-            StringComparer.Ordinal);
+        var visible = new HashSet<string>(
+            frames.Select(f => f.Event.EventId), StringComparer.Ordinal);
         foreach (var id in _windows.Keys.Where(id => !visible.Contains(id)).ToArray())
         {
             _windows[id].Close();
@@ -150,12 +203,13 @@ internal sealed class ModernToastHost : IDisposable
 
         var work = SystemParameters.WorkArea;
         var scale = Scale(work, _sizePercent);
+        // Scheduler returns top-to-bottom. Last-created lower windows naturally
+        // cover earlier upper ones while entering from the common origin.
         foreach (var frame in frames)
         {
             if (!_windows.TryGetValue(frame.Event.EventId, out var window))
             {
-                var text = _content[frame.Event.EventId];
-                window = new ModernToastWindow(text.Title, text.Description);
+                window = new ModernToastWindow(_content[frame.Event.EventId]);
                 _windows.Add(frame.Event.EventId, window);
                 window.Apply(frame, scale, work);
                 window.Show();
@@ -182,7 +236,9 @@ internal sealed class ModernToastHost : IDisposable
         _disposed = true;
         StopRendering();
         _holdWake.Stop();
+        _batchWake.Stop();
         _holdWake.Tick -= OnHoldWake;
+        _batchWake.Tick -= OnBatchWake;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         foreach (var window in _windows.Values) window.Close();

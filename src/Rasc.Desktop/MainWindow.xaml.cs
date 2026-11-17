@@ -309,6 +309,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PreviewModernWave_Click(object sender, RoutedEventArgs e)
+    {
+        if (_profile != NotificationProfile.Modern)
+        {
+            StatusText.Text = "Select Modern to preview waves.";
+            return;
+        }
+        var item = PreviewWaveCountBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
+        if (int.TryParse(item?.Tag?.ToString(), out var count))
+            _modernToasts.PreviewWave(count);
+    }
+
+    private void PreviewRare_Click(object sender, RoutedEventArgs e)
+    {
+        if (_profile == NotificationProfile.Modern) _modernToasts.PreviewRare();
+        else StatusText.Text = "Rare preview requires the Modern profile.";
+    }
+
     private void PreviewProgress_Click(object sender, RoutedEventArgs e)
     {
         // Display-only fixture; no fabricated GC callbacks or SQLite updates.

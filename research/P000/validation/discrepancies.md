@@ -23,6 +23,11 @@
 | M-D04 | Modern animation appearance in game | UNVERIFIED RUNTIME | frame-state code read; no capture | 60+ FPS runtime video, actual window scale and hook behavior |
 | M-D05 | Generalized lifetime claim | CORRECTED | default 5s does not imply universal 5.6s | distinguish type override/resolved callbacks/delays |
 | M-D06 | Modern stacking rules across types | PARTIAL | cap 3/1 with display-alone guards | test burst by notification type and overlay mode |
+| M-D07 | Modern C01 independent admissions and card content | OWNER-REPORTED DISCREPANCY; C02 development correction | four owner screenshots and explicit shared below-taskbar waves/no status text; C01 contradicted | C02 grouped wave tests and owner Windows capture; preserve first failed CI |
+| M-D08 | Shared modern faint watermark across 1/2/3 cards | RECONSTRUCTED; EXACT CSS NOT VERIFIED | P000 records top/middle/bottom Steam logo positions; owner screenshots; original dogbones.zip unavailable now | WPF shared clipped vector approximation; re-examine hashed CSS and owner capture |
+| M-D09 | Rare achievement gold icon shine | OWNER-REPORTED; TOAST SOURCE NOT VERIFIED | related Steam Community achievement glow CSS exists; toast reuse unproven | don't infer live rarity from timestamps; trace original achievement React/CSS and metadata |
+| M-D10 | Modern numeric-progress variant | OWNER-REPORTED; LIVE PROVIDER UNSUPPORTED | owner shows progress numbers/bar; GC saves no progress callback | display-only progress fixture; future reliable event source |
+| M-D11 | Modern wave admission and taskbar hiding | ENGINEERING; RUNTIME NOT VERIFIED | shared under-taskbar origin and waited arrivals; screenshots cannot distinguish whole-wave vs first-item barrier | owner 1/2/3/6 frame capture and actual taskbar test |
 | P-D01 | Original Steam binaries/assets licensing | OPEN | copyrighted proprietary input | reference only metadata/strings/constants, do not redistribute original assets |
 | Q-D01 | Independent QA | DEFERRED | one-time single-operator exception | separate independent review at later acceptance gate |
 

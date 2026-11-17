@@ -2,7 +2,7 @@
 
 An independent Windows companion for displaying and browsing virtual Counter-Strike: Global Offensive achievements without representing them as Steam-published achievements.
 
-**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 Modern normal desktop renderer and profile selector passed Windows CI 117/117 at implementation SHA 2acebb8c43df58841fbf309fcaf8272f7d3fecf0; Modern runtime/independent QA and subsystem owner acceptance remain OPEN.
+**Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 passed 117/117 tests. P003-C02 corrects Modern waves, watermark and rare/progress variants in draft PR #7; the final C02 source passed Windows CI 124/124 (0 build warnings/errors) and self-contained x64 publish at SHA 391582703a8b1cc8f415aa8eca293aeac0187309. All Modern runtime/independent QA and owner acceptance remain OPEN.
 
 ## Scope and provenance
 
@@ -73,3 +73,11 @@ The owner reported C03 animation **123.3 WPF Rendering callbacks/sec**, longest 
 - Verified test implementation commit: 2acebb8c43df58841fbf309fcaf8272f7d3fecf0, [Windows Actions run 44058257118](https://github.com/thgillwtnorizoh/rasc/actions/runs/44058257118): **117/117 tests**, **0 WPF build warnings/errors**, self-contained Windows x64 artifact uploaded.
 - Select **Classic / Modern / Off**; stored separately from existing Classic appearance preferences. Normal desktop Modern profile uses per-toast nonactivating WPF windows, a source-informed 283px width, provisionally 70px height, 300ms entrance/exit, 5s hold, 3 active slots plus FIFO. Classic source unchanged.
 - Modern visuals are a documented placeholder reconstruction, not Steam assets; in-game overlay, sound, special-mode queues, original CSS/font metrics, multi-monitor and owner Windows runtime qualification are **NOT VERIFIED**.
+
+
+## P003-C02 — Owner-target Modern visual/wave correction
+
+- [Work 2 issue #6](https://github.com/thgillwtnorizoh/rasc/issues/6), [draft PR #7](https://github.com/thgillwtnorizoh/rasc/pull/7), [C02 checkpoint](docs/P003/checkpoints/P003-C02.md), [four owner screenshot evidence records](research/P000/modern/owner-visual-c02.md).
+- Up to three notifications form a **single wave**; cards fan from one invisible origin beneath the taskbar and return to it on exit. Later arrivals wait. 1/2/3 stack decorations share a dynamically clipped faint vector watermark. Modern cards have no outer border/status headline. There are separate name+description, rare-preview gold icon, and numeric-progress+bar views.
+- Added independent preview wave fixture with 1, 2, 3 or 6 events. The GT-610 provider cannot supply rarity/progress; previews never grant awards or alter history.
+- This is a constrained approximate WPF desktop presentation, NOT original stock Steam, not an in-game overlay, and requires owner runtime acceptance and Work 1 independent QA.

@@ -49,9 +49,24 @@
       <Button Content="Preview Unlock" Margin="12,0,0,0" Padding="13,9"
               Click="PreviewClassic_Click"
               ToolTip="Uses the owner-supplied unlock screenshot text as a presentation-only fixture."/>
+      <Button Content="Preview Rare" Margin="10,0,0,0" Padding="13,9"
+              Click="PreviewRare_Click"
+              ToolTip="Modern-only rare achievement golden-frame test; no GC or history changes."/>
       <Button Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"
               Click="PreviewProgress_Click"
               ToolTip="Shows a test progress notification only; GT-610 does not persist progress callbacks."/>
+      </WrapPanel>
+      <WrapPanel Margin="0,10,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBlock Text="Modern wave fixture" VerticalAlignment="Center" Margin="0,0,8,0"/>
+        <ComboBox x:Name="PreviewWaveCountBox" Width="74" SelectedIndex="2"
+                  ToolTip="Presentation-only simultaneous wave: 1, 2, 3 or 6 awards. No GC or SQLite writes.">
+          <ComboBoxItem Content="1 card" Tag="1"/>
+          <ComboBoxItem Content="2 cards" Tag="2"/>
+          <ComboBoxItem Content="3 cards" Tag="3"/>
+          <ComboBoxItem Content="6 cards" Tag="6"/>
+        </ComboBox>
+        <Button Content="Preview wave" Margin="10,0,0,0" Padding="12,5"
+                Click="PreviewModernWave_Click"/>
       </WrapPanel>
       <WrapPanel Margin="0,10,0,0" Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock VerticalAlignment="Center" Text="Animation FPS" Margin="0,0,8,0"/>
