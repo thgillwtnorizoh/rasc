@@ -1,0 +1,26 @@
+name: RASC renderer reference v1 source lock
+on:
+  pull_request:
+    paths:
+      - 'docs/rendering-reference/v1/**'
+      - 'src/Rasc.Core/**'
+      - 'src/Rasc.Desktop/**'
+      - 'tests/reference/legendary-codepen.html'
+      - 'research/P000/**'
+      - 'docs/P002/**'
+      - 'docs/P003/**'
+      - '.github/workflows/windows.yml'
+      - '.github/workflows/renderer-reference-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-reference-lock:
+    name: Verify 31 pinned source + fixture blobs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run offline v1 renderer reference lock checker
+        run: python3 docs/rendering-reference/v1/verify-snapshot.py
