@@ -11,5 +11,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Rasc.Core/Rasc.Core.csproj" />
+    <!-- Source PNGs supplied for experimental rare-glow fidelity verification.
+         Asset redistribution/licensing is a separate OWNER acceptance gate. -->
+    <Resource Include="Assets/SteamRareMasks/achievement_square_mask.png" />
+    <Resource Include="Assets/SteamRareMasks/achievement_star_mask.png" />
   </ItemGroup>
 </Project>

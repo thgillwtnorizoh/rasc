@@ -49,7 +49,7 @@
       <Button x:Name="PreviewUnlockButton" Content="Preview Unlock" Margin="12,0,0,0" Padding="13,9"
               Click="PreviewClassic_Click"
               ToolTip="Uses the owner-supplied unlock screenshot text as a presentation-only fixture."/>
-      <Button Content="Preview Rare" Margin="10,0,0,0" Padding="13,9"
+      <Button x:Name="PreviewRareButton" Content="Preview Rare" Margin="10,0,0,0" Padding="13,9"
               Click="PreviewRare_Click"
               ToolTip="Modern-only rare achievement golden-frame test; no GC or history changes."/>
       <Button x:Name="PreviewProgressButton" Content="Preview Progress" Margin="10,0,0,0" Padding="13,9"

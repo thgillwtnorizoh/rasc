@@ -106,3 +106,14 @@ The remaining two horizontal bands in the owner screenshot were traced to contin
 Exact-source [Windows CI 44230546521](https://github.com/thgillwtnorizoh/rasc/actions/runs/44230546521) at 1423c7f5142f738d22a4a4f5305f3e156e7c4151: 162/162 .NET tests, 5/5 WPF HWND smoke scenarios with bitmap comparisons at 100/125/150%, zero WPF build warnings/errors, self-contained x64 artifact 14394952402. The failed first test run 44230291652 is recorded, not erased; it was caused by an invalid test expectation during the below-screen entrance phase.
 
 **P003 OPEN:** owner must test actual 1/2/3-card seams and match rare gold to reference; real Valve mask/image usage, mixed-monitor gaming and independent QA NOT VERIFIED.
+
+
+## C03-C05 — Supplied 64×64 masks, visible WPF gold halo
+
+[Work 2 issue #24](https://github.com/thgillwtnorizoh/rasc/issues/24) / [draft PR #25](https://github.com/thgillwtnorizoh/rasc/pull/25) / [C05 checkpoint](checkpoints/P003-C03-C05.md) / [owner supplied asset record](../../research/P000/modern/owner-c03-c05-masks.md) / [Work 1 independent QA #26](https://github.com/thgillwtnorizoh/rasc/issues/26).
+
+The user confirmed the C04 Modern 1/2/3 stack no longer has gaps, but its rare gold was invisible. They supplied the two real 64×64 PNG masks embedded in their approved CodePen sample. C05 now loads those images as WPF Resources with alpha ImageBrush masking, rather than inventing a hard-rectangular mask and polygon. Outer square fixed 68px, inner star reverse 18s at 88px, inner radial light 6s forward at 108px, fixed 48px icon and CodePen gold dual-shadow colors.
+
+[Exact-source CI 44236912219](https://github.com/thgillwtnorizoh/rasc/actions/runs/44236912219) at 1e5e17c4c69038d0112daf69d38b8c65b65f6d61: 162 core tests, 6 real WPF smoke cases and self-contained x64 publish PASS. The rare test verifies **visible gold outside the icon and changing between frames**, not merely existence of mask/image components. Prior C05 diagnostic runs, failures and fixes are recorded in the checkpoint. [Windows artifact 14397966899](https://github.com/thgillwtnorizoh/rasc/actions/runs/44236912219/artifacts/14397966899).
+
+**Limitations:** User-supplied mask artwork matched the CodePen, but particular Valve desktop-client build provenance and distribution permission were not established. Draft branch/build is for owner evaluation; no main merge/final public release before owner rights decision. Screenshot-level native Steam/CodePen parity, independent Work 1 and fullscreen runtime remain NOT VERIFIED. P003 OPEN.

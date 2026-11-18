@@ -226,55 +226,11 @@ internal sealed class ModernToastCard : UserControl
         return radial;
     }
 
-    private static Geometry CreateSquareAlphaMask()
-    {
-        // Independent geometry, not either CodePen/Valve embedded PNG. An
-        // outline-shaped alpha mask with a hollow 48x48 center makes moving
-        // light visible only around the achievement image, not on top of it.
-        var geometry = new CombinedGeometry(GeometryCombineMode.Exclude,
-            new RectangleGeometry(new Rect(0, 0,
-                LegendaryGlowSpec.OuterSize, LegendaryGlowSpec.OuterSize)),
-            new RectangleGeometry(new Rect(LegendaryGlowSpec.MaskPadding,
-                LegendaryGlowSpec.MaskPadding, LegendaryGlowSpec.IconSize,
-                LegendaryGlowSpec.IconSize)));
-        geometry.Freeze();
-        return geometry;
-    }
-
-    private static Geometry CreateStarAlphaMask()
-    {
-        // Procedurally drawn geometric star aperture; the 64x64 mask from
-        // the reference Pen is NOT copied or bundled, so pixel parity will
-        // still require the owner's visual test.
-        var geometry = new StreamGeometry();
-        const int rays = 14;
-        var center = LegendaryGlowSpec.MiddleSize / 2;
-        using (var ctx = geometry.Open())
-        {
-            for (var i = 0; i < rays * 2; i++)
-            {
-                var angle = i * Math.PI / rays - Math.PI / 2;
-                var radius = i % 2 == 0 ? 42.0 : 31.0;
-                var point = new Point(center + Math.Cos(angle) * radius,
-                    center + Math.Sin(angle) * radius);
-                if (i == 0) ctx.BeginFigure(point, true, true);
-                else ctx.LineTo(point, true, false);
-            }
-        }
-        geometry.Freeze();
-        return geometry;
-    }
-
-    private static DrawingBrush MaskBrush(Geometry geometry)
-    {
-        var brush = new DrawingBrush(new GeometryDrawing(
-            Brushes.White, null, geometry))
-        {
-            Stretch = Stretch.Fill
-        };
-        brush.Freeze();
-        return brush;
-    }
+    // The owner recovered the exact CodePen 64x64 alpha-mask PNGs. Retain
+    // their smooth edge/brightness patterns instead of the old WPF hard-edged
+    // subtractive rectangle and 14-spoke polygon (which visually erased
+    // most moving light). Refer to Assets/SteamRareMasks/NOTICE.md for the
+    // experimental asset-rights gate before a public release.
 
     private static FrameworkElement CreateLegendaryHalo()
     {
@@ -283,7 +239,8 @@ internal sealed class ModernToastCard : UserControl
             Width = LegendaryGlowSpec.OuterSize,
             Height = LegendaryGlowSpec.OuterSize,
             ClipToBounds = true,
-            OpacityMask = MaskBrush(CreateSquareAlphaMask()),
+            Tag = "SteamRareGlowRoot",
+            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Square),
             IsHitTestVisible = false
         };
 
@@ -292,7 +249,8 @@ internal sealed class ModernToastCard : UserControl
             Width = LegendaryGlowSpec.MiddleSize,
             Height = LegendaryGlowSpec.MiddleSize,
             RenderTransformOrigin = new Point(.5, .5),
-            OpacityMask = MaskBrush(CreateStarAlphaMask()),
+            Tag = "SteamRareGlowRotatingMask",
+            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Star),
             IsHitTestVisible = false
         };
         Canvas.SetLeft(container, -LegendaryGlowSpec.MaskPadding);
