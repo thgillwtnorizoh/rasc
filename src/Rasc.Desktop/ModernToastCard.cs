@@ -238,9 +238,12 @@ internal sealed class ModernToastCard : UserControl
         {
             Width = LegendaryGlowSpec.OuterSize,
             Height = LegendaryGlowSpec.OuterSize,
-            // Browser source defines a mask, NOT overflow:hidden.
-            // Let the original 64px alpha texture bound the light itself.
-            ClipToBounds = false,
+            // A CSS mask constrains the rasterized element and its
+            // overflowing descendants to the element's mask box. WPF's
+            // OpacityMask alone does NOT enforce this box: C06 screenshot
+            // diagnostics showed rotating rays reaching the title area.
+            // This explicit WPF clip restores the source's masked box.
+            ClipToBounds = true,
             Tag = "SteamRareGlowRoot",
             OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Square),
             IsHitTestVisible = false

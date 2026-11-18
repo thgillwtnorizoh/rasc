@@ -216,9 +216,12 @@ internal static class Program
                         "CodePen icon wrapper dimensions, position or overflow changed.");
                 var rootElement = masked.Single(c =>
                     (string?)c.Tag == "SteamRareGlowRoot");
-                if (rootElement.ClipToBounds)
+                // A CSS mask clips the content to its *mask box*.
+                // WPF OpacityMask by itself does not clip overflow from
+                // nested rotated children; a real WPF clip is required.
+                if (!rootElement.ClipToBounds)
                     throw new InvalidOperationException(
-                        "CodePen mask root added explicit overflow clipping.");
+                        "WPF root mask box must clip rotating descendants.");
 
                 var shadows = Descendants(wrapper).OfType<Image>()
                     .Where(i => (string?)i.Tag == "CodePenDualBoxShadow").ToArray();
@@ -357,6 +360,27 @@ internal static class Program
                 }
                 Console.WriteLine($"CODEPEN COMPARISON: bright gold pixels = {bright}, " +
                     $"tinted halo pixels = {glowing}");
+                // The masked 68px root ends at x=68. A CSS 16px blurred
+                // shadow may leave a FAINT tail after that, but intense
+                // rotating-gold rays cannot reach the title's x>=83 area.
+                // This guards the original C06 WPF overflow bug seen in
+                // actual exported bitmap evidence, not an arbitrary fit.
+                var spilledRays = 0;
+                for (var y = 0; y < 70; y++)
+                for (var x = 83; x <= 110; x++)
+                {
+                    var p = (y * 283 + x) * 4;
+                    var blue = bytes[p];
+                    var green = bytes[p + 1];
+                    var red = bytes[p + 2];
+                    if (red >= 145 && red > green + 10 &&
+                        green > blue + 10)
+                        spilledRays++;
+                }
+                Console.WriteLine($"CODEPEN MASK BOX: spill pixels beyond x83={spilledRays}");
+                if (spilledRays != 0)
+                    throw new InvalidOperationException(
+                        $"WPF root mask leaked {spilledRays} bright rays into text.");
                 if (glowing < 16)
                     throw new InvalidOperationException(
                         $"Rare gold is not visible outside the icon ({glowing} luminous pixels).");
