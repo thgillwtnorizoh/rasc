@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Rasc.Core;
 using System.Windows.Threading;
 using Rasc.Desktop;
@@ -83,18 +85,79 @@ internal static class Program
                         $"Expected one Modern HWND with {count} cards.");
                 var host = app.Windows.Cast<Window>()
                     .Single(w => w.IsVisible && w.GetType().Name == "ModernToastWindow");
-                if (host.Content is not Canvas canvas || canvas.Children.Count != count)
-                    throw new InvalidOperationException("Modern cards are not on one canvas.");
-                var top = canvas.Children.Cast<UIElement>()
-                    .Select(Canvas.GetTop).OrderBy(y => y).ToArray();
+                if (host.Content is not Canvas canvas)
+                    throw new InvalidOperationException("Modern host is not a Canvas.");
+
+                var cards = canvas.Children.Cast<UIElement>()
+                    .Where(c => c.GetType().Name == "ModernToastCard").ToArray();
+                if (cards.Length != count || canvas.Children.Count != count + 1)
+                    throw new InvalidOperationException(
+                        $"Expected {count} cards plus ONE shared wave decoration.");
+
+                var decor = canvas.Children.OfType<Canvas>().Single();
+                if (decor.Children.Count != 2 ||
+                    decor.Children[0] is not Border backdrop ||
+                    backdrop.Background is not RadialGradientBrush)
+                    throw new InvalidOperationException(
+                        "One continuous gradient and shared watermark required.");
+                var expectedTop = ModernStackGeometry.ViewportHeight -
+                    count * ModernToastScheduler.CardHeight;
+                if (Math.Abs(Canvas.GetTop(decor) - expectedTop) > .0001 ||
+                    Math.Abs(decor.Height - count * ModernToastScheduler.CardHeight) > .0001)
+                    throw new InvalidOperationException(
+                        "Wave background does not cover whole occupied stack.");
+
+                var tops = cards.Select(Canvas.GetTop).OrderBy(y => y).ToArray();
                 for (var i = 0; i < count; i++)
                 {
-                    var expected = ModernStackGeometry.ViewportHeight -
-                        count * ModernToastScheduler.CardHeight +
-                        i * ModernToastScheduler.CardHeight;
-                    if (Math.Abs(top[i] - expected) > 0.0001)
+                    var expected = expectedTop + i * ModernToastScheduler.CardHeight;
+                    if (Math.Abs(tops[i] - expected) > .0001)
                         throw new InvalidOperationException(
-                            $"Seam in Modern canvas at card {i}: {top[i]} != {expected}");
+                            $"Modern card {i} top {tops[i]} != {expected}");
+                }
+
+                foreach (var card in cards)
+                {
+                    if (card is not UserControl view ||
+                        view.Content is not Canvas contents ||
+                        !ReferenceEquals(contents.Background, Brushes.Transparent))
+                        throw new InvalidOperationException(
+                            "Per-card gradients reintroduced a raster boundary.");
+                }
+
+                // Render the REAL WPF visual tree at fractional DPI, not just
+                // the geometry. Test only internal boundaries, not the top of
+                // a wave, which is meant to reveal transparency above it.
+                canvas.UpdateLayout();
+                foreach (var dpiFactor in new[]{1.0, 1.25, 1.5})
+                {
+                    var pxWidth = (int)Math.Ceiling(ModernToastScheduler.CardWidth * dpiFactor);
+                    var pxHeight = (int)Math.Ceiling(ModernStackGeometry.ViewportHeight * dpiFactor);
+                    var bitmap = new RenderTargetBitmap(
+                        pxWidth, pxHeight, 96 * dpiFactor, 96 * dpiFactor,
+                        PixelFormats.Pbgra32);
+                    bitmap.Render(canvas);
+                    var stride = pxWidth * 4;
+                    var pixels = new byte[stride * pxHeight];
+                    bitmap.CopyPixels(pixels, stride, 0);
+                    for (var n = 1; n < count; n++)
+                    {
+                        var boundary = (int)Math.Round(
+                            (expectedTop + n * ModernToastScheduler.CardHeight) * dpiFactor);
+                        var sampleX = Math.Max(1, (int)Math.Round(2 * dpiFactor));
+                        for (var y = boundary - 2; y <= boundary + 2; y++)
+                        {
+                            var a = (y * pxWidth + sampleX) * 4;
+                            var b = ((y - 1) * pxWidth + sampleX) * 4;
+                            if (pixels[a + 3] < 250 || pixels[b + 3] < 250)
+                                throw new InvalidOperationException(
+                                    $"Transparent gap at {count} cards, {dpiFactor}x, y={y}");
+                            for (var channel = 0; channel < 3; channel++)
+                                if (Math.Abs(pixels[a + channel] - pixels[b + channel]) > 8)
+                                    throw new InvalidOperationException(
+                                        $"Visible gradient seam at {count} cards, {dpiFactor}x, y={y}");
+                        }
+                    }
                 }
             }
 
