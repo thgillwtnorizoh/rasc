@@ -17,7 +17,6 @@ namespace Rasc.Desktop;
 internal sealed class ModernToastCard : UserControl
 {
     private readonly Canvas _surface;
-    private readonly Canvas _watermark;
 
     internal ModernToastCard(ModernToastContent content)
     {
@@ -25,36 +24,19 @@ internal sealed class ModernToastCard : UserControl
         Height = ModernToastScheduler.CardHeight;
         IsHitTestVisible = false;
 
-        var gradient = new RadialGradientBrush
-        {
-            Center = new Point(0.48, 0.26),
-            GradientOrigin = new Point(0.48, 0.26),
-            RadiusX = 0.85,
-            RadiusY = 1.1,
-            GradientStops =
-            {
-                new GradientStop((Color)ColorConverter.ConvertFromString("#23262E"), 0),
-                new GradientStop((Color)ColorConverter.ConvertFromString("#0E141B"), 1)
-            }
-        };
-        gradient.Freeze();
-
         _surface = new Canvas
         {
             Width = ModernToastScheduler.CardWidth,
             Height = ModernToastScheduler.CardHeight,
-            Background = gradient,
+            // A SINGLE shared gradient is painted by ModernToastWindow.
+            // Child cards have no opaque fill or per-card gradient seam.
+            Background = Brushes.Transparent,
             ClipToBounds = true,
             SnapsToDevicePixels = true
         };
 
-        // The decoration is ONE long geometric watermark shared across a
-        // wave; each 70px window clips only its own slot. It is deliberately
-        // approximate until the original hashed CSS can be re-examined.
-        _watermark = CreateWatermark();
-        Canvas.SetLeft(_watermark, 143);
-        _surface.Children.Add(_watermark);
-
+        // Decorative background and Steam watermark are drawn only ONCE
+        // across the occupied wave by the shared parent HWND.
         _surface.Children.Add(CreateIcon(content.IsRare));
 
         var headline = new TextBlock
@@ -137,7 +119,27 @@ internal sealed class ModernToastCard : UserControl
         Content = _surface;
     }
 
-    private static Canvas CreateWatermark()
+    internal static Brush CreateBackdropGradient()
+    {
+        var gradient = new RadialGradientBrush
+        {
+            Center = new Point(0.48, 0.26),
+            GradientOrigin = new Point(0.48, 0.26),
+            RadiusX = 0.85,
+            RadiusY = 1.1,
+            GradientStops =
+            {
+                new GradientStop((Color)ColorConverter.ConvertFromString("#23262E"), 0),
+                new GradientStop((Color)ColorConverter.ConvertFromString("#0E141B"), 1)
+            }
+        };
+        gradient.Freeze();
+
+
+        return gradient;
+    }
+
+    internal static Canvas CreateWatermark()
     {
         // The C03 hand-drawn rings were not even recognizably Steam. Use
         // the actual geometric Steam mark, not an improvised mechanism.
@@ -198,206 +200,199 @@ internal sealed class ModernToastCard : UserControl
         };
     }
 
-    // Steam Community rare-asset CSS uses transparent and bright gold
-    // repeating-conic stops, a 6s forward gradient rotation, a separate
-    // 18s reverse star-mask rotation and a square outer mask. These colors
-    // are reference-derived; the original native toast's compositor
-    // equivalence remains unverified.
-    private static readonly (double At, byte Alpha, byte Green, byte Blue)[] RareGoldStops =
-    [
-        (0.00, 45, 217, 0),
-        (0.06, 0, 184, 78),
-        (0.10, 45, 217, 0),
-        (0.26, 255, 184, 78),
-        (0.35, 45, 217, 0),
-        (0.40, 255, 184, 78),
-        (0.60, 45, 217, 0),
-        (0.82, 255, 184, 78),
-        (1.00, 45, 217, 0)
-    ];
+    // Owner-approved visual target is Dataminer's CodePen "Steam Colors"
+    // LegendaryAchievement, not the separate SteamCommunity conic-gradient
+    // implementation. Its glow is a RADIAL gradient: nine source-matched
+    // stops, nested 10-unit masks, 18s reverse mask and 6s forward light.
+    // The CodePen's embedded PNG masks are intentionally NOT redistributed.
+    private static readonly Brush LegendaryRadial = CreateLegendaryRadial();
 
-    private static readonly ImageSource RareConicSource = CreateRareConicSource();
-
-    private static ImageSource CreateRareConicSource()
+    private static Brush CreateLegendaryRadial()
     {
-        const int steps = 192;
-        const double size = 96;
-        var center = new Point(size / 2, size / 2);
-        var drawing = new DrawingGroup();
-        for (var i = 0; i < steps; i++)
+        LegendaryGlowSpec.Validate();
+        var radial = new RadialGradientBrush
         {
-            var a = i * Math.PI * 2 / steps - Math.PI / 2;
-            var b = (i + 1) * Math.PI * 2 / steps - Math.PI / 2;
-            var radius = size * 0.75;
-            var p1 = new Point(center.X + radius * Math.Cos(a),
-                center.Y + radius * Math.Sin(a));
-            var p2 = new Point(center.X + radius * Math.Cos(b),
-                center.Y + radius * Math.Sin(b));
-            var geometry = new StreamGeometry();
-            using (var ctx = geometry.Open())
-            {
-                ctx.BeginFigure(center, true, true);
-                ctx.LineTo(p1, true, false);
-                ctx.ArcTo(p2, new Size(radius, radius), 0, false,
-                    SweepDirection.Clockwise, true, false);
-            }
-            geometry.Freeze();
-            var brush = new SolidColorBrush(ConicGold((i + 0.5) / steps));
-            brush.Freeze();
-            drawing.Children.Add(new GeometryDrawing(brush, null, geometry));
-        }
-        drawing.Freeze();
-        var img = new DrawingImage(drawing);
-        img.Freeze();
-        return img;
+            Center = new Point(0.5, 0.5),
+            GradientOrigin = new Point(0.5, 0.5),
+            // CSS ellipse farthest-corner for a square: radius sqrt(.5).
+            RadiusX = Math.Sqrt(0.5),
+            RadiusY = Math.Sqrt(0.5)
+        };
+        foreach (var stop in LegendaryGlowSpec.RadialStops)
+            radial.GradientStops.Add(new GradientStop(
+                Color.FromArgb(stop.Alpha, stop.Red, stop.Green, stop.Blue),
+                stop.Offset));
+        radial.Freeze();
+        return radial;
     }
 
-    private static Color ConicGold(double fraction)
+    private static Geometry CreateSquareAlphaMask()
     {
-        static byte Lerp(byte from, byte to, double t) =>
-            (byte)Math.Round(from + (to - from) * t);
-        for (var i = 1; i < RareGoldStops.Length; i++)
-        {
-            var next = RareGoldStops[i];
-            if (fraction > next.At) continue;
-            var prior = RareGoldStops[i - 1];
-            var t = (fraction - prior.At) / (next.At - prior.At);
-            return Color.FromArgb(Lerp(prior.Alpha, next.Alpha, t), 255,
-                Lerp(prior.Green, next.Green, t),
-                Lerp(prior.Blue, next.Blue, t));
-        }
-        return Color.FromArgb(45, 255, 217, 0);
-    }
-
-    private static Geometry CreateRotatingStarMask()
-    {
-        // Independently constructed soft-edged radial star approximation.
-        // The actual Valve star-mask PNG has NOT been redistributed.
-        var g = new StreamGeometry();
-        using (var ctx = g.Open())
-        {
-            for (var i = 0; i < 24; i++)
-            {
-                var angle = 2 * Math.PI * i / 24 - Math.PI / 2;
-                var radius = i % 2 == 0 ? 38.0 : 27.0;
-                var pt = new Point(33 + radius * Math.Cos(angle),
-                    33 + radius * Math.Sin(angle));
-                if (i == 0) ctx.BeginFigure(pt, true, true);
-                else ctx.LineTo(pt, true, false);
-            }
-        }
-        g.Freeze();
-        return g;
-    }
-
-    private static Geometry CreateHaloMask()
-    {
+        // Independent geometry, not either CodePen/Valve embedded PNG. An
+        // outline-shaped alpha mask with a hollow 48x48 center makes moving
+        // light visible only around the achievement image, not on top of it.
         var geometry = new CombinedGeometry(GeometryCombineMode.Exclude,
-            new RectangleGeometry(new Rect(0, 0, 66, 66)),
-            new RectangleGeometry(new Rect(9, 9, 48, 48)));
+            new RectangleGeometry(new Rect(0, 0,
+                LegendaryGlowSpec.OuterSize, LegendaryGlowSpec.OuterSize)),
+            new RectangleGeometry(new Rect(LegendaryGlowSpec.MaskPadding,
+                LegendaryGlowSpec.MaskPadding, LegendaryGlowSpec.IconSize,
+                LegendaryGlowSpec.IconSize)));
         geometry.Freeze();
         return geometry;
     }
 
-    private static Image MakeRotatingGlow(double seconds, bool reverse,
-        double opacity, double blurRadius)
+    private static Geometry CreateStarAlphaMask()
     {
-        var image = new Image
+        // Procedurally drawn geometric star aperture; the 64x64 mask from
+        // the reference Pen is NOT copied or bundled, so pixel parity will
+        // still require the owner's visual test.
+        var geometry = new StreamGeometry();
+        const int rays = 14;
+        var center = LegendaryGlowSpec.MiddleSize / 2;
+        using (var ctx = geometry.Open())
         {
-            Source = RareConicSource,
-            Width = 96,
-            Height = 96,
-            Opacity = opacity,
-            IsHitTestVisible = false,
-            RenderTransformOrigin = new Point(.5, .5),
-            Effect = new BlurEffect { Radius = blurRadius }
+            for (var i = 0; i < rays * 2; i++)
+            {
+                var angle = i * Math.PI / rays - Math.PI / 2;
+                var radius = i % 2 == 0 ? 42.0 : 31.0;
+                var point = new Point(center + Math.Cos(angle) * radius,
+                    center + Math.Sin(angle) * radius);
+                if (i == 0) ctx.BeginFigure(point, true, true);
+                else ctx.LineTo(point, true, false);
+            }
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static DrawingBrush MaskBrush(Geometry geometry)
+    {
+        var brush = new DrawingBrush(new GeometryDrawing(
+            Brushes.White, null, geometry))
+        {
+            Stretch = Stretch.Fill
         };
-        var rotation = new RotateTransform();
-        image.RenderTransform = rotation;
-        rotation.BeginAnimation(RotateTransform.AngleProperty,
-            new DoubleAnimation(0, reverse ? -360 : 360,
-                new Duration(TimeSpan.FromSeconds(seconds)))
+        brush.Freeze();
+        return brush;
+    }
+
+    private static FrameworkElement CreateLegendaryHalo()
+    {
+        var root = new Canvas
+        {
+            Width = LegendaryGlowSpec.OuterSize,
+            Height = LegendaryGlowSpec.OuterSize,
+            ClipToBounds = true,
+            OpacityMask = MaskBrush(CreateSquareAlphaMask()),
+            IsHitTestVisible = false
+        };
+
+        var container = new Canvas
+        {
+            Width = LegendaryGlowSpec.MiddleSize,
+            Height = LegendaryGlowSpec.MiddleSize,
+            RenderTransformOrigin = new Point(.5, .5),
+            OpacityMask = MaskBrush(CreateStarAlphaMask()),
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(container, -LegendaryGlowSpec.MaskPadding);
+        Canvas.SetTop(container, -LegendaryGlowSpec.MaskPadding);
+
+        var light = new Border
+        {
+            Width = LegendaryGlowSpec.LightSize,
+            Height = LegendaryGlowSpec.LightSize,
+            Background = LegendaryRadial,
+            RenderTransformOrigin = new Point(.5, .5),
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(light, -LegendaryGlowSpec.MaskPadding);
+        Canvas.SetTop(light, -LegendaryGlowSpec.MaskPadding);
+
+        var spinMask = new RotateTransform();
+        container.RenderTransform = spinMask;
+        spinMask.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(0, -360, new Duration(LegendaryGlowSpec.MaskReverse))
             {
                 RepeatBehavior = RepeatBehavior.Forever
             });
-        return image;
+
+        var spinLight = new RotateTransform();
+        light.RenderTransform = spinLight;
+        spinLight.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(0, 360, new Duration(LegendaryGlowSpec.LightForward))
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            });
+
+        container.Children.Add(light);
+        root.Children.Add(container);
+        return root;
+    }
+
+    private static Border ShadowPlate(Color gold, double blur, double opacity)
+    {
+        return new Border
+        {
+            Width = LegendaryGlowSpec.IconSize,
+            Height = LegendaryGlowSpec.IconSize,
+            BorderThickness = new Thickness(0),
+            Background = new SolidColorBrush(Color.FromRgb(13, 16, 22)),
+            Effect = new DropShadowEffect
+            {
+                Color = gold,
+                BlurRadius = blur,
+                ShadowDepth = 0,
+                Opacity = opacity
+            },
+            IsHitTestVisible = false
+        };
     }
 
     private static FrameworkElement CreateIcon(bool rare)
     {
         var iconCanvas = new Canvas
         {
-            Width = 54,
-            Height = 54,
+            Width = 54, Height = 54,
             IsHitTestVisible = false
         };
         Canvas.SetLeft(iconCanvas, 6);
         Canvas.SetTop(iconCanvas, 8);
 
-        // NO blue ordinary frame, NO solid yellow rare frame.
         if (rare)
         {
-            // Full 66x66 stationary mask, inset around the 48x48 icon.
-            // Rotating 96x96 conic layers are larger than the mask to cover
-            // its four corners at every angle; no rotating square artifacts.
-            var halo = new Canvas
-            {
-                Width = 66,
-                Height = 66,
-                ClipToBounds = true,
-                IsHitTestVisible = false,
-                OpacityMask = new DrawingBrush(new GeometryDrawing(
-                    Brushes.White, null, CreateHaloMask()))
-                {
-                    Stretch = Stretch.Fill
-                }
-            };
-            Canvas.SetLeft(halo, -6);
-            Canvas.SetTop(halo, -6);
-
-            // CSS-like nested mask: the star-shaped clipping field turns
-            // backward every 18 seconds, while the conic light inside turns
-            // forward every 6 seconds. The OUTER square ring stays fixed.
-            var star = new Canvas
-            {
-                Width = 66, Height = 66,
-                OpacityMask = new DrawingBrush(new GeometryDrawing(
-                    Brushes.White, null, CreateRotatingStarMask()))
-                {
-                    Stretch = Stretch.Fill
-                },
-                RenderTransformOrigin = new Point(.5, .5),
-                RenderTransform = new RotateTransform()
-            };
-            ((RotateTransform)star.RenderTransform).BeginAnimation(
-                RotateTransform.AngleProperty,
-                new DoubleAnimation(0, -360, new Duration(TimeSpan.FromSeconds(18)))
-                {
-                    RepeatBehavior = RepeatBehavior.Forever
-                });
-
-            var diffuse = MakeRotatingGlow(6, false, .52, 3.4);
-            Canvas.SetLeft(diffuse, -15);
-            Canvas.SetTop(diffuse, -15);
-            star.Children.Add(diffuse);
-
-            var sharp = MakeRotatingGlow(6, false, .88, .8);
-            Canvas.SetLeft(sharp, -15);
-            Canvas.SetTop(sharp, -15);
-            star.Children.Add(sharp);
-            halo.Children.Add(star);
+            // CodePen nested layout: root -10 around a 48px icon, then
+            // middle -10 inside root and moving light -10 inside middle.
+            // Two independent near/far shadows reproduce the author's
+            // specific CSS values rather than one invented gold border.
+            var halo = CreateLegendaryHalo();
+            Canvas.SetLeft(halo, 3 - LegendaryGlowSpec.MaskPadding);
+            Canvas.SetTop(halo, 3 - LegendaryGlowSpec.MaskPadding);
             iconCanvas.Children.Add(halo);
+
+            var farShadow = ShadowPlate(Color.FromRgb(255, 217, 78),
+                LegendaryGlowSpec.FarShadowBlur,
+                LegendaryGlowSpec.FarShadowOpacity);
+            Canvas.SetLeft(farShadow, 3);
+            Canvas.SetTop(farShadow, 3);
+            iconCanvas.Children.Add(farShadow);
+
+            var nearShadow = ShadowPlate(Color.FromRgb(255, 184, 78),
+                LegendaryGlowSpec.NearShadowBlur,
+                LegendaryGlowSpec.NearShadowOpacity);
+            Canvas.SetLeft(nearShadow, 3);
+            Canvas.SetTop(nearShadow, 3);
+            iconCanvas.Children.Add(nearShadow);
         }
 
         var image = new Border
         {
-            Width = 48,
-            Height = 48,
+            Width = 48, Height = 48,
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromRgb(13, 16, 22)),
             Child = new TextBlock
             {
-                Text = "★", // Explicit placeholder until CS:GO icon catalog.
+                Text = "★", // Deliberate fixture until catalog icon assets.
                 FontSize = 23,
                 Foreground = rare
                     ? new SolidColorBrush(Color.FromRgb(255, 216, 70))
@@ -406,18 +401,6 @@ internal sealed class ModernToastCard : UserControl
                 VerticalAlignment = VerticalAlignment.Center
             }
         };
-        if (rare)
-        {
-            // Original-style rare icon produces a diffuse golden box shadow,
-            // never an opaque yellow border around the image.
-            image.Effect = new DropShadowEffect
-            {
-                Color = Color.FromRgb(255, 184, 78),
-                BlurRadius = 16,
-                ShadowDepth = 0,
-                Opacity = .43
-            };
-        }
         Canvas.SetLeft(image, 3);
         Canvas.SetTop(image, 3);
         iconCanvas.Children.Add(image);
@@ -426,9 +409,6 @@ internal sealed class ModernToastCard : UserControl
 
     internal void Apply(ModernToastFrame frame)
     {
-        Canvas.SetTop(_watermark,
-            ModernWatermarkLayout.TopInsideCard(frame.WaveSize, frame.Slot));
-
         // The bottommost card can be partially visible while sliding in.
         // Every card's content remains independently clipped, but the card
         // itself is part of the common parent HWND (no DWM per-card edges).

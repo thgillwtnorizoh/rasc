@@ -21,6 +21,9 @@ internal sealed class ModernToastWindow : Window
     private const long WsExToolWindow = 0x80;
     private const long WsExNoActivate = 0x08000000;
     private readonly Canvas _viewport;
+    private readonly Canvas _decorations;
+    private readonly Border _backdrop;
+    private readonly Canvas _watermark;
     private readonly Dictionary<string, ModernToastCard> _cards =
         new(StringComparer.Ordinal);
     private double _scale = 1;
@@ -51,6 +54,32 @@ internal sealed class ModernToastWindow : Window
             SnapsToDevicePixels = true,
             IsHitTestVisible = false
         };
+        // The background and watermark are wave-level decorations. Earlier
+        // versions drew a new radial background and separately clipped Steam
+        // logo INSIDE each 70-unit card, leaving thin internal highlight/alpha
+        // bands even after moving cards into one HWND. There must be exactly
+        // ONE gradient and ONE watermark for the occupied wave.
+        _decorations = new Canvas
+        {
+            Width = ModernToastScheduler.CardWidth,
+            Height = 0,
+            ClipToBounds = true,
+            SnapsToDevicePixels = true,
+            IsHitTestVisible = false
+        };
+        _backdrop = new Border
+        {
+            Width = ModernToastScheduler.CardWidth,
+            Height = 0,
+            Background = ModernToastCard.CreateBackdropGradient(),
+            IsHitTestVisible = false
+        };
+        _watermark = ModernToastCard.CreateWatermark();
+        Canvas.SetLeft(_watermark, 143);
+        _decorations.Children.Add(_backdrop);
+        _decorations.Children.Add(_watermark);
+        _viewport.Children.Add(_decorations);
+
         Content = _viewport;
         Tag = 0;
     }
@@ -98,6 +127,17 @@ internal sealed class ModernToastWindow : Window
             Canvas.SetLeft(card, 0);
             Canvas.SetTop(card, ModernStackGeometry.TopInViewport(frame));
         }
+
+        // The moving cards always form one overlapping/contiguous occupied
+        // envelope. Paint it as a single surface rather than allowing any
+        // per-card background, clip or anti-aliased edge to reveal a seam.
+        // Relative geometry is exactly aligned to each child's top, with no
+        // arbitrary pixel overlap, border or compensating background stripe.
+        var decoration = ModernStackDecorationLayout.ForFrames(frames);
+        Canvas.SetTop(_decorations, decoration.Top);
+        _decorations.Height = decoration.Height;
+        _backdrop.Height = decoration.Height;
+        Canvas.SetTop(_watermark, decoration.WatermarkTop);
 
         Tag = _cards.Count; // presentation-only diagnostic for real-HWND smoke
 
