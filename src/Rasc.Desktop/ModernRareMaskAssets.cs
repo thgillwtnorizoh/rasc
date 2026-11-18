@@ -49,17 +49,23 @@ internal static class ModernRareMaskAssets
     /// mask-image/mask-size:100%: scale the original alpha to the full
     /// outer 68x68 square or rotating 88x88 star container.
     /// </summary>
-    internal static ImageBrush AlphaBrush(BitmapSource source)
+    internal static ImageBrush AlphaBrush(BitmapSource source, double maskExtent)
     {
         ArgumentNullException.ThrowIfNull(source);
+        if (!double.IsFinite(maskExtent) || maskExtent <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maskExtent));
+        // CSS mask-size:100% is relative to its 68px/88px element box,
+        // not the potentially larger bounds of painted rotating children.
         var brush = new ImageBrush(source)
         {
             Stretch = Stretch.Fill,
             AlignmentX = AlignmentX.Center,
             AlignmentY = AlignmentY.Center,
             TileMode = TileMode.None,
-            ViewboxUnits = BrushMappingMode.RelativeToBoundingBox,
-            ViewportUnits = BrushMappingMode.RelativeToBoundingBox
+            ViewboxUnits = BrushMappingMode.Absolute,
+            Viewbox = new Rect(0, 0, source.PixelWidth, source.PixelHeight),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewport = new Rect(0, 0, maskExtent, maskExtent)
         };
         brush.Freeze();
         return brush;

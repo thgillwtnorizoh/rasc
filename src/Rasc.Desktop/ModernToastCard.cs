@@ -245,7 +245,7 @@ internal sealed class ModernToastCard : UserControl
             // This explicit WPF clip restores the source's masked box.
             ClipToBounds = true,
             Tag = "SteamRareGlowRoot",
-            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Square),
+            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Square, LegendaryGlowSpec.OuterSize),
             IsHitTestVisible = false
         };
 
@@ -255,7 +255,7 @@ internal sealed class ModernToastCard : UserControl
             Height = LegendaryGlowSpec.MiddleSize,
             RenderTransformOrigin = new Point(.5, .5),
             Tag = "SteamRareGlowRotatingMask",
-            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Star),
+            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Star, LegendaryGlowSpec.MiddleSize),
             IsHitTestVisible = false
         };
         Canvas.SetLeft(container, -LegendaryGlowSpec.MaskPadding);

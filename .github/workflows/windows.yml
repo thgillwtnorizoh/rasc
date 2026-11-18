@@ -60,9 +60,13 @@ jobs:
             $referenceUrl = ([System.Uri]::new($referencePath)).AbsoluteUri
             $imagePath = Join-Path $out "chromium-legendary-$ms.png"
             $profile = Join-Path $env:RUNNER_TEMP "rasc-chrome-$ms"
-            & $chrome --headless=new --no-first-run --no-default-browser-check --disable-extensions --user-data-dir="$profile" --hide-scrollbars --force-device-scale-factor=1 --window-size=440,240 --screenshot="$imagePath" $referenceUrl
-            Write-Output "Chrome phase=$ms exit=$LASTEXITCODE outputExists=$(Test-Path $imagePath) uri=$referenceUrl"
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $imagePath)) {
+            $arguments = @('--headless=new', '--no-first-run', '--no-default-browser-check',
+              '--disable-extensions', "--user-data-dir=$profile", '--hide-scrollbars',
+              '--force-device-scale-factor=1', '--window-size=440,240',
+              "--screenshot=$imagePath", $referenceUrl)
+            $process = Start-Process -FilePath $chrome -ArgumentList $arguments -Wait -PassThru
+            Write-Output "Chrome phase=$ms exit=$($process.ExitCode) outputExists=$(Test-Path $imagePath) uri=$referenceUrl"
+            if ($process.ExitCode -ne 0 -or -not (Test-Path $imagePath)) {
               throw "Chrome reference screenshot failed at $ms ms"
             }
           }

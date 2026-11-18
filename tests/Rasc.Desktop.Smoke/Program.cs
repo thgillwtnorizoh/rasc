@@ -205,6 +205,18 @@ internal static class Program
                     throw new InvalidOperationException(
                         "Source PNG opacity masks not installed on rare glow layers.");
 
+                // Verify the CSS 100%-mask box, not just the presence of PNGs.
+                foreach (var element in masked)
+                {
+                    var b = (ImageBrush)element.OpacityMask!;
+                    if (b.ViewportUnits != BrushMappingMode.Absolute ||
+                        b.ViewboxUnits != BrushMappingMode.Absolute ||
+                        b.Viewport != new Rect(0, 0, element.Width, element.Height) ||
+                        b.Viewbox != new Rect(0, 0, 64, 64))
+                        throw new InvalidOperationException(
+                            $"Source mask was not mapped to the 68/88px CSS box: {element.Tag}");
+                }
+
                 var wrapper = Descendants(card).OfType<Canvas>()
                     .Single(c => (string?)c.Tag == "LegendaryIconWrapper");
                 if (wrapper.Width != LegendaryGlowSpec.IconSize ||
