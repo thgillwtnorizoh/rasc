@@ -38,3 +38,15 @@ Classic owner design vs pinned source font, alignment and border; Modern supplie
 **Next bounded task / Actor / Dependencies:** Docs author verify pinned manifest and branch publication; Work 1 independently confirm baseline/fixtures without rewriting production; owner archive expiring external artifact ZIPs, resolve licensing and decide P002/P003 acceptance separately.
 
 **Subsystem: P002 OPEN; P003 OPEN.** Visual acceptance is not subsystem acceptance.
+
+## Post-publication verification addendum — 2026-11-18
+
+This append-only addendum supersedes the provisional **NOT RUN at authoring** fields above; those fields describe the pre-publication snapshot.
+
+- First documentation publication SHA: `2f612c8bbb29c70e85f6c359d1d3b8b892179b9d`; dedicated hash-lock workflow addition SHA: `3bb0f8aa06cda340b35069b67aa4d59eed3c4411`.
+- **VERIFIED COMPONENT — offline archive verification:** [GitHub Actions 44325478259](https://github.com/thgillwtnorizoh/rasc/actions/runs/44325478259) **SUCCESS**, Linux Python 3, `python3 docs/rendering-reference/v1/verify-snapshot.py`: **31 Git blob identities checked, 0 mismatched** at SHA `3bb0f8aa06cda340b35069b67aa4d59eed3c4411`. Independent Work 1 QA still NOT RUN.
+- **VERIFIED DEVELOPMENT REGRESSION:** [Windows CI 44325478048](https://github.com/thgillwtnorizoh/rasc/actions/runs/44325478048) Windows job **SUCCESS** at the same SHA; core tests, WPF build, all six actual WPF smoke, Chromium reference, x64 publish and artifact upload steps all successful. The immutable production baseline is unmodified.
+- GitHub recursive-tree independent metadata comparison checked **31/31 manifest entries** against exact C07 SHA before publication; no source discrepancy. RASC user-accepted visuals and rights limitations remain unchanged.
+- This addendum is a Markdown-only follow-up commit after the cited verified SHA. **The new follow-up commit's own CI is NOT VERIFIED at authoring**, and must be distinguished from the two passing runs above.
+
+**Status after the cited source-locked runs: VERIFIED DOCUMENTATION CHECKPOINT** for baseline identity and unchanged development functionality. **Work 1 independent acceptance still OPEN; P002 OPEN; P003 OPEN.**
