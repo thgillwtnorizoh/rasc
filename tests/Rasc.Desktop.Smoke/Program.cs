@@ -223,17 +223,31 @@ internal static class Program
                             $"Mask {component.Tag} has no usable alpha image.");
                 }
 
-                // Captures exactly the rendered WPF rare card. The card's
-                // background is transparent, so color outside the 48px icon
-                // proves the gold halo itself is visible, not the shared wave
-                // background or the yellow star in its center.
+                // WPF RenderTargetBitmap of an already-positioned child
+                // UserControl returned ALL TRANSPARENT pixels, including
+                // the icon itself (false-negative in first smoke attempt).
+                // Render the same complete Modern viewport that the earlier
+                // owner-qualified seam tests used, then crop the bottom
+                // 70-unit card into LOCAL coordinates before measuring gold.
+                // The backdrop is opaque, but nonrare background is blue
+                // gray (R < B); pixels with R > B are gold light. The
+                // fixed yellow star in the icon interior is excluded.
                 var cardElement = (FrameworkElement)card;
-                cardElement.UpdateLayout();
-                var raster = new RenderTargetBitmap(283, 70, 96, 96,
+                canvas.UpdateLayout();
+                var raster = new RenderTargetBitmap(283,
+                    (int)ModernStackGeometry.ViewportHeight, 96, 96,
                     PixelFormats.Pbgra32);
-                raster.Render(cardElement);
+                raster.Render(canvas);
+                var full = new byte[283 * (int)ModernStackGeometry.ViewportHeight * 4];
+                raster.CopyPixels(full, 283 * 4, 0);
                 var bytes = new byte[283 * 70 * 4];
-                raster.CopyPixels(bytes, 283 * 4, 0);
+                var top = (int)Canvas.GetTop((UIElement)card);
+                if (top != 140)
+                    throw new InvalidOperationException(
+                        $"Rare preview not resting in bottom slot: {top}.");
+                for (var y = 0; y < 70; y++)
+                    Buffer.BlockCopy(full, (top + y) * 283 * 4,
+                        bytes, y * 283 * 4, 283 * 4);
                 var glowing = 0;
                 for (var y = 0; y < 70; y++)
                 for (var x = 0; x < 68; x++)
