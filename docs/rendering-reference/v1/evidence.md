@@ -1,0 +1,29 @@
+# Evidence, provenance and retention — renderer archive v1
+
+## Immutable production source
+Exact baseline source **`373d04101d03f51135f2f1b192758efddad12f00`** on the experimental C07 branch. All source entries in [manifest.json](manifest.json) use Git **blob SHA-1** (not file SHA-256); [verify-snapshot.py](verify-snapshot.py) recomputes Git blob IDs locally. It checks source and in-repo fixtures without requiring GitHub or Steam. Only a new explicitly versioned archive may change these pinned inputs.
+
+## Original reference versus approved recreation
+| Class | Evidence | What it establishes / does NOT establish |
+| --- | --- | --- |
+| CONFIRMED ORIGINAL STATIC CONFIG (Classic) | [May 2023 AchievementNotification.res](https://github.com/SteamTracking/SteamTracking/blob/90999d0307ac7f2b92f805e8f3a5d159421eaf8a/ClientExtracted/friends/AchievementNotification.res), [styles](https://github.com/SteamTracking/SteamTracking/blob/90999d0307ac7f2b92f805e8f3a5d159421eaf8a/ClientExtracted/resource/styles/steam.styles), scheme | Frozen source resource layout, colors/configuration; not frame-by-frame engine behavior |
+| OWNER-SUPPLIED Classic visual fixtures | Owner image(1) 275×102 SHA-256 `ac36c86f025e5f33140a8632274b563caa343c60d6b9a3814559b63df37150b9`; image(2) 410×162 SHA-256 `106e31ce9961176bbd8727f12da01b8d4bc955b55618d74faf3a48b3d08f9c94`; owner RASC crop 228×166 SHA-256 `ea8a9106756029dd98b818d4663f3dafac7b91df9ecb5a36b57b8c146b18df35` | Layout/font/wrap target and owner observations; do not assume client version and avoid publicly copying image files |
+| CONFIRMED IN SUPPLIED CLIENT (Modern) | `dogbones.zip`, UI build `11229305`; [P000 Modern reference](../../../research/P000/modern/reference.md) | Client JS/CSS investigation; source may contain customizations; not generic stock Steam |
+| CONFIRMED PUBLIC CODEPEN REFERENCE | [Dataminer Steam Colors / LegendaryAchievement](https://codepen.io/Dataminer/pen/pooWzpo) and [local embedded reference HTML](https://github.com/thgillwtnorizoh/rasc/blob/373d04101d03f51135f2f1b192758efddad12f00/tests/reference/legendary-codepen.html) | CSS glow target and masks used; not confirmed Valve client identity |
+| USER-ACCEPTED VISUAL DESIGN | [Classic acceptance 2026-11-17](../../../docs/P002/acceptance/visual-design-baseline.md); owner accepted C07 rare glow in conversation **2026-11-18** | Approval of visible RASC target surfaces; does not supersede independent QA or licenses |
+| VERIFIED COMPONENT (development) | [C07 CI 44310193628](https://github.com/thgillwtnorizoh/rasc/actions/runs/44310193628), tested SHA `373d04101d03f51135f2f1b192758efddad12f00` | **162/162 core PASS**, **6/6 actual WPF GUI smoke scenarios PASS** (`modern-rare`, `classic-only`, `modern-idle-classic`, `modern-stack-two`, `modern-classic`, `modern-progress`), zero WPF Release compiler warnings/errors, win-x64 self-contained build PASS |
+| INDEPENDENTLY VERIFIED | Work 1 QA [#29](https://github.com/thgillwtnorizoh/rasc/issues/29) | **NOT RUN**; cannot be inferred from development smoke |
+| UNVERIFIED RUNTIME | Actual original Steam/CS:GO toast frame captures; multi-monitor mixed DPI, physical 100/125/150% display comparison; exact browser↔WPF gamma/phase | **NOT VERIFIED** |
+
+### C07 reproducible raster evidence
+- [Windows x64 owner-test binary (artifact 14430491029)](https://github.com/thgillwtnorizoh/rasc/actions/runs/44310193628/artifacts/14430491029)
+- [WPF/Chromium diagnostic frames (artifact 14429463422)](https://github.com/thgillwtnorizoh/rasc/actions/runs/44310193628/artifacts/14429463422): WPF 900/2000ms; Chrome 900/2000ms; browser `no-glow` and `no-masks` controls; the two PNG masks; simulated WPF RenderTargetBitmap 96/120/144dpi outputs.
+- Chromium source fixture embedded exact mask PNG **data URLs** to fix former local `file://` mask-loading failure. Its 900 vs 2000ms frames differ in **2,002** image pixels; difference and non-identity with no-glow controls validate actual animated masked CSS. Chrome uses blank `#222` icon; production WPF uses yellow star/dark icon; do not claim phase-matched exact color fidelity.
+- Rare WPF C06→C07 compare: outside-icon warm pixels 836→103, and left edge x0,y35 (136,107,58)→(37,38,36) near 900ms. Diagnostic, not an independent original-client comparison.
+- **Retention warning:** GitHub Actions downloadable binary and screenshot artifacts can expire under repository policies. For long-term archival, the owner should save private copies of the referenced artifact ZIPs, store a checksum manifest and retain actual owner screenshot files securely; we did **not** re-commit third-party masks, screenshots or compiled binaries in this documentation task. Source, manifest, and embedded test fixture remain addressable by immutable Git commit.
+
+### Known discrepancies and publication gates
+- Classic: owner visual font/left title/no visible stroke differs from archived May 2023 resource; original effective styling/asset versions undetermined. Current artifact placeholders are not authentic achievement icons.
+- Modern: supplied client can be customized; CodePen is not a proven Steam build; browser CSS and WPF shadow/gamma can differ; actual per-monitor/native Valve render unqualified.
+- Assets: 64×64 `achievement_square_mask.png` **Git blob** `e81be0ce97e8efbbe663567783f5c7d858da064f`, `achievement_star_mask.png` **Git blob** `211aca32f4dd2d54515286627d161785f86de3a1`. License and Valve ownership **UNRESOLVED**: see [NOTICE.md](https://github.com/thgillwtnorizoh/rasc/blob/373d04101d03f51135f2f1b192758efddad12f00/src/Rasc.Desktop/Assets/SteamRareMasks/NOTICE.md). Source branch itself is publicly accessible; documentation does **not** confer distribution permission. No main merge or release until owner resolves the rights gate.
+- Steam mark geometry is from simple-icons (CC0 vector); Valve trademark is a separate issue. Same with external reference images.
