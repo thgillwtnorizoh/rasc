@@ -146,18 +146,27 @@ internal static class Program
                     {
                         var boundary = (int)Math.Round(
                             (expectedTop + n * ModernToastScheduler.CardHeight) * dpiFactor);
-                        var sampleX = Math.Max(1, (int)Math.Round(2 * dpiFactor));
-                        for (var y = boundary - 2; y <= boundary + 2; y++)
+                        // x≈2 now legitimately intersects the moving
+                        // rare-glow halo of a card that begins at this
+                        // boundary. Assert the background in two regions
+                        // OUTSIDE icons (x<69), labels and watermark.
+                        // Do not classify intended gold light as a seam.
+                        foreach (var designX in new[] { 112, 279 })
                         {
-                            var a = (y * pxWidth + sampleX) * 4;
-                            var b = ((y - 1) * pxWidth + sampleX) * 4;
-                            if (pixels[a + 3] < 250 || pixels[b + 3] < 250)
-                                throw new InvalidOperationException(
-                                    $"Transparent gap at {count} cards, {dpiFactor}x, y={y}");
-                            for (var channel = 0; channel < 3; channel++)
-                                if (Math.Abs(pixels[a + channel] - pixels[b + channel]) > 8)
+                            var sampleX = Math.Min(pxWidth - 2,
+                                (int)Math.Round(designX * dpiFactor));
+                            for (var y = boundary - 2; y <= boundary + 2; y++)
+                            {
+                                var a = (y * pxWidth + sampleX) * 4;
+                                var b = ((y - 1) * pxWidth + sampleX) * 4;
+                                if (pixels[a + 3] < 250 || pixels[b + 3] < 250)
                                     throw new InvalidOperationException(
-                                        $"Visible gradient seam at {count} cards, {dpiFactor}x, y={y}");
+                                        $"Transparent gap at {count} cards, {dpiFactor}x, x={designX}, y={y}");
+                                for (var channel = 0; channel < 3; channel++)
+                                    if (Math.Abs(pixels[a + channel] - pixels[b + channel]) > 8)
+                                        throw new InvalidOperationException(
+                                            $"Background seam at {count} cards, {dpiFactor}x, x={designX}, y={y}");
+                            }
                         }
                     }
                 }
