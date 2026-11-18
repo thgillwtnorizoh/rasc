@@ -1,6 +1,6 @@
 # P004 — popup font comparison and notification audio choices
 
-**Project:** CS:GO Achievements Resurrection / RASC · **Status:** Work 2 DEVELOPMENT CANDIDATE · **Starting production baseline:** `373d04101d03f51135f2f1b192758efddad12f00` (P003-C07). **Owner scope:** initial popup visual renders accepted; font and sound customization are NEW features. No change to accepted colors, icon, mask glow, wave, DPI positioning, or source observer.
+**Project:** CS:GO Achievements Resurrection / RASC · **Status:** VERIFIED WORK 2 DEVELOPMENT CHECKPOINT ([Windows CI 44341243839](https://github.com/thgillwtnorizoh/rasc/actions/runs/44341243839), 178 core PASS, 7 real WPF PASS), owner audible and font GUI approval pending · **Starting production baseline:** `373d04101d03f51135f2f1b192758efddad12f00` (P003-C07). **Owner scope:** initial popup visual renders accepted; font and sound customization are NEW features. No change to accepted colors, icon, mask glow, wave, DPI positioning, or source observer.
 
 ## 1. Font comparison
 
