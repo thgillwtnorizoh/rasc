@@ -204,6 +204,47 @@ internal static class Program
                     throw new InvalidOperationException(
                         "Source PNG opacity masks not installed on rare glow layers.");
 
+                var wrapper = Descendants(card).OfType<Canvas>()
+                    .Single(c => (string?)c.Tag == "LegendaryIconWrapper");
+                if (wrapper.Width != LegendaryGlowSpec.IconSize ||
+                    wrapper.Height != LegendaryGlowSpec.IconSize ||
+                    wrapper.ClipToBounds ||
+                    Canvas.GetLeft(wrapper) != 10 ||
+                    Canvas.GetTop(wrapper) != 11)
+                    throw new InvalidOperationException(
+                        "CodePen icon wrapper dimensions, position or overflow changed.");
+                var rootElement = masked.Single(c =>
+                    (string?)c.Tag == "SteamRareGlowRoot");
+                if (rootElement.ClipToBounds)
+                    throw new InvalidOperationException(
+                        "CodePen mask root added explicit overflow clipping.");
+
+                var shadows = Descendants(wrapper).OfType<Image>()
+                    .Where(i => (string?)i.Tag == "CodePenDualBoxShadow").ToArray();
+                if (shadows.Length != 1 || shadows[0].Source is not BitmapSource src ||
+                    src.PixelWidth != 128 || src.PixelHeight != 128)
+                    throw new InvalidOperationException(
+                        "CSS dual shadow must use one 128px transparent raster.");
+                if (Descendants(wrapper).OfType<UIElement>().Any(element =>
+                        element.Effect is System.Windows.Media.Effects.DropShadowEffect))
+                    throw new InvalidOperationException(
+                        "Regression: opaque WPF DropShadowEffect plates reintroduced.");
+
+                var shadowPixels = new byte[128 * 128 * 4];
+                src.CopyPixels(shadowPixels, 128 * 4, 0);
+                int ShadowAlpha(int x) => shadowPixels[(64 * 128 + x) * 4 + 3];
+                // Two separated blur radii must produce a smooth falloff
+                // outside the CSS-spread 48px square; a hard gold border
+                // fails this test even if its overall glow is bright.
+                if (!(ShadowAlpha(36) > ShadowAlpha(24) &&
+                      ShadowAlpha(24) > ShadowAlpha(8) &&
+                      ShadowAlpha(8) <= 2))
+                    throw new InvalidOperationException(
+                        "Two-shadow CSS blur/spread profile is not smooth.");
+                Console.WriteLine(
+                    $"CODEPEN SHADOW alpha x36={ShadowAlpha(36)}, " +
+                    $"x24={ShadowAlpha(24)}, x8={ShadowAlpha(8)}");
+
                 foreach (var component in masked)
                 {
                     var png = (BitmapSource)((ImageBrush)component.OpacityMask!).ImageSource;
@@ -252,7 +293,7 @@ internal static class Program
                 for (var y = 0; y < 70; y++)
                 for (var x = 0; x < 68; x++)
                 {
-                    if (x is >= 9 and <= 57 && y is >= 11 and <= 59)
+                    if (x is >= 10 and < 58 && y is >= 11 and < 59)
                         continue;
                     var p = (y * 283 + x) * 4;
                     // PixelFormats.Pbgra32 is BGRA *premultiplied*.
@@ -275,7 +316,7 @@ internal static class Program
                 for (var x = 0; x < 68; x++)
                 {
                     var p = (y * 283 + x) * 4;
-                    var inside = x is >= 9 and <= 57 && y is >= 11 and <= 59;
+                    var inside = x is >= 10 and < 58 && y is >= 11 and < 59;
                     var a = (int)bytes[p + 3];
                     if (inside) { insideMaxAlpha = Math.Max(insideMaxAlpha, a); continue; }
                     outsideMaxAlpha = Math.Max(outsideMaxAlpha, a);
@@ -302,10 +343,38 @@ internal static class Program
                         $"BGRA={bytes[p]},{bytes[p+1]},{bytes[p+2]},{bytes[p+3]}");
                 }
 
+                var bright = 0;
+                for (var y = 0; y < 70; y++)
+                for (var x = 0; x < 68; x++)
+                {
+                    if (x is >= 10 and < 58 && y is >= 11 and < 59)
+                        continue;
+                    var p = (y * 283 + x) * 4;
+                    if (bytes[p + 2] >= 160 &&
+                        bytes[p + 2] > bytes[p] + 10)
+                        bright++;
+                }
+                Console.WriteLine($"CODEPEN COMPARISON: bright gold pixels = {bright}, " +
+                    $"tinted halo pixels = {glowing}");
                 if (glowing < 16)
                     throw new InvalidOperationException(
                         $"Rare gold is not visible outside the icon ({glowing} luminous pixels).");
                 return bytes;
+            }
+
+            void SaveRareFrame(byte[] bytes, string fileName)
+            {
+                var directory = Environment.GetEnvironmentVariable(
+                    "RASC_SMOKE_FRAME_DIR");
+                if (string.IsNullOrWhiteSpace(directory)) return;
+                Directory.CreateDirectory(directory);
+                var frame = BitmapSource.Create(283, 70, 96, 96,
+                    PixelFormats.Pbgra32, null, bytes, 283 * 4);
+                frame.Freeze();
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(frame));
+                using var file = File.Create(Path.Combine(directory, fileName));
+                encoder.Save(file);
             }
 
             var clock = Stopwatch.StartNew();
@@ -370,12 +439,14 @@ internal static class Program
                                 return;
                             }
                             rareFirstFrame = SnapshotRareCard();
+                            SaveRareFrame(rareFirstFrame, "c06-rare-frame-0900ms.png");
                             modernObserved = true;
                             stage++;
                         }
                         else if (stage == 2 && elapsed > 2000)
                         {
                             var nextFrame = SnapshotRareCard();
+                            SaveRareFrame(nextFrame, "c06-rare-frame-2000ms.png");
                             if (rareFirstFrame is null)
                                 throw new InvalidOperationException(
                                     "Missing first rare-glow animation frame.");
@@ -386,7 +457,7 @@ internal static class Program
                             for (var y = 0; y < 70; y++)
                             for (var x = 0; x < 68; x++)
                             {
-                                if (x is >= 9 and <= 57 && y is >= 11 and <= 59)
+                                if (x is >= 10 and < 58 && y is >= 11 and < 59)
                                     continue;
                                 var p = (y * 283 + x) * 4;
                                 if (Math.Abs(nextFrame[p] - rareFirstFrame[p]) > 4 ||

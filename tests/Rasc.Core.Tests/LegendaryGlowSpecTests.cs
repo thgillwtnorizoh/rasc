@@ -40,5 +40,7 @@ public sealed class LegendaryGlowSpecTests
         Assert.Equal(.4, LegendaryGlowSpec.FarShadowOpacity);
         Assert.Equal(2, LegendaryGlowSpec.NearShadowBlur);
         Assert.Equal(16, LegendaryGlowSpec.FarShadowBlur);
+        Assert.Equal(1, LegendaryGlowSpec.ShadowSpread);
+        Assert.Equal(0.5, LegendaryGlowSpec.CssBlurSigmaFactor);
     }
 }

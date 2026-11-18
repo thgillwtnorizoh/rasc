@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>RASC Reference — Dataminer Steam Colors / LegendaryAchievement</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+/*
+ * Minimal offline VISUAL REFERENCE preserving the effect-related CSS from
+ * Dataminer's CodePen, https://codepen.io/Dataminer/pen/pooWzpo.
+ * PNG mask resources are the exact owner-supplied 64x64 Data URL assets
+ * checked into this experimental branch (rights gate remains unresolved).
+ * This is a reference fixture, not a production HTML renderer.
+ */
+body {
+  background: #1D2025;
+  color: #777;
+  font-family: verdana;
+  text-align: center;
+}
+h3 { margin: 20px; }
+.wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: row;
+  margin: 20px;
+}
+.AchievementIconWrapper {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  position: relative;
+}
+.AchievementIconGlowContainerRoot,
+.AchievementIconGlowContainer,
+.AchievementIconGlow {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  bottom: -10px;
+  left: -10px;
+}
+.AchievementIconGlowContainerRoot {
+  -webkit-mask-image: url("../../src/Rasc.Desktop/Assets/SteamRareMasks/achievement_square_mask.png");
+  mask-image: url("../../src/Rasc.Desktop/Assets/SteamRareMasks/achievement_square_mask.png");
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-size: 100%;
+  mask-size: 100%;
+}
+.AchievementIconGlowContainer {
+  animation-name: rotate;
+  animation-duration: 18s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: reverse;
+  -webkit-mask-image: url("../../src/Rasc.Desktop/Assets/SteamRareMasks/achievement_star_mask.png");
+  mask-image: url("../../src/Rasc.Desktop/Assets/SteamRareMasks/achievement_star_mask.png");
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-size: 100%;
+  mask-size: 100%;
+}
+.AchievementIconGlow {
+  animation-name: rotate;
+  animation-duration: 6s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.fakeIcon {
+  background: #222;
+  height: 48px;
+  position: relative;
+  vertical-align: top;
+  width: 48px;
+}
+.AchievementIconWrapper.LegendaryAchievement .AchievementIconGlow {
+  background: radial-gradient(
+    rgba(255, 201, 109, 0.178) 0%,
+    rgba(255, 201, 109, 0) 6%,
+    rgba(255, 201, 109, 0.178) 10%,
+    #ffb84e 26%,
+    rgba(255, 201, 109, 0.178) 35%,
+    #ffb84e 40%,
+    rgba(255, 201, 109, 0.178) 60%,
+    #ffb84e 82%,
+    rgba(255, 201, 109, 0.178) 100%);
+}
+.AchievementIconWrapper.LegendaryAchievement .fakeIcon {
+  box-shadow:
+    0px 0px 2px 1px rgba(255, 184, 78, 0.6),
+    0px 0px 16px 1px rgba(255, 217, 78, 0.4);
+}
+@keyframes rotate { to { transform: rotate(1turn); } }
+</style>
+</head>
+<body>
+  <h3>Steam Colors:</h3>
+  <div class="wrap">
+    <div class="AchievementIconWrapper LegendaryAchievement">
+      <div class="AchievementIconGlowContainerRoot">
+        <div class="AchievementIconGlowContainer">
+          <div class="AchievementIconGlow"></div>
+        </div>
+      </div>
+      <div class="fakeIcon"></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -4,8 +4,9 @@ namespace Rasc.Core;
 /// Presentation-only "Steam Colors" gold LegendaryAchievement reference from
 /// https://codepen.io/Dataminer/pen/pooWzpo (retrieved 2026-11-18).
 /// This is a behavioral/color reference, NOT the original Valve toast CSS.
-/// The CodePen's 64x64 embedded mask PNGs are NOT redistributed: WPF must
-/// reconstruct comparable masks from original geometric primitives.
+/// The original 64x64 PNG masks are owner-supplied experimental branch
+/// resources; rights/provenance remain an explicit gate before public release.
+/// C06 translates CSS box-shadow spread and blur rather than WPF effects.
 /// </summary>
 public static class LegendaryGlowSpec
 {
@@ -16,6 +17,9 @@ public static class LegendaryGlowSpec
     public const double LightSize = MiddleSize + 2 * MaskPadding; // 108
     public const double NearShadowBlur = 2;
     public const double FarShadowBlur = 16;
+    // CSS: 0 0 2px 1px rgba(...) and 0 0 16px 1px rgba(...).
+    public const double ShadowSpread = 1;
+    public const double CssBlurSigmaFactor = 0.5;
     public const double NearShadowOpacity = 0.6;
     public const double FarShadowOpacity = 0.4;
     public static readonly TimeSpan MaskReverse = TimeSpan.FromSeconds(18);
