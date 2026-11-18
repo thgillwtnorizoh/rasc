@@ -49,6 +49,7 @@ jobs:
           )
           $chrome = $chromeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $chrome) { throw 'Chrome unavailable: cannot establish browser reference pixels.' }
+          Copy-Item 'src/Rasc.Desktop/Assets/SteamRareMasks/*.png' -Destination $out
           $fixture = Get-Content 'tests/reference/legendary-codepen.html' -Raw
           foreach ($ms in @(900, 2000)) {
             $time = $ms / 1000
@@ -58,12 +59,13 @@ jobs:
             [System.IO.File]::WriteAllText($referencePath, $html)
             $referenceUrl = ([System.Uri]::new($referencePath)).AbsoluteUri
             $imagePath = Join-Path $out "chromium-legendary-$ms.png"
-            & $chrome --headless=new --no-first-run --no-default-browser-check --hide-scrollbars --force-device-scale-factor=1 --window-size=440,240 --screenshot="$imagePath" $referenceUrl
+            $profile = Join-Path $env:RUNNER_TEMP "rasc-chrome-$ms"
+            & $chrome --headless=new --no-first-run --no-default-browser-check --disable-extensions --user-data-dir="$profile" --hide-scrollbars --force-device-scale-factor=1 --window-size=440,240 --screenshot="$imagePath" $referenceUrl
+            Write-Output "Chrome phase=$ms exit=$LASTEXITCODE outputExists=$(Test-Path $imagePath) uri=$referenceUrl"
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path $imagePath)) {
               throw "Chrome reference screenshot failed at $ms ms"
             }
           }
-          Copy-Item 'src/Rasc.Desktop/Assets/SteamRareMasks/*.png' -Destination $out
       - name: Upload WPF rare-glow frame evidence
         if: always()
         uses: actions/upload-artifact@v4
