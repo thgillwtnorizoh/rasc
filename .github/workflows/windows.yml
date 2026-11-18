@@ -104,7 +104,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Rasc-C06-Gold-Reference-Frames
+          name: Rasc-C07-Gold-and-Chromium-Parity-Frames
           path: artifacts/Rasc-Wpf-Smoke/
           if-no-files-found: warn
       - name: Publish self-contained Windows x64
