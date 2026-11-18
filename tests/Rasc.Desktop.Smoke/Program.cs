@@ -250,6 +250,44 @@ internal static class Program
                         glowing++;
                 }
 
+                // Diagnostic separation: card not rendered at all versus
+                // a truly invisible rare halo. These are NOT the same defect.
+                var insideMaxAlpha = 0;
+                var outsideMaxAlpha = 0;
+                var outsideNonzero = 0;
+                var outsideWarm = 0;
+                var maxRedMinusBlue = int.MinValue;
+                for (var y = 0; y < 70; y++)
+                for (var x = 0; x < 68; x++)
+                {
+                    var p = (y * 283 + x) * 4;
+                    var inside = x is >= 9 and <= 57 && y is >= 11 and <= 59;
+                    var a = (int)bytes[p + 3];
+                    if (inside) { insideMaxAlpha = Math.Max(insideMaxAlpha, a); continue; }
+                    outsideMaxAlpha = Math.Max(outsideMaxAlpha, a);
+                    if (a > 0) outsideNonzero++;
+                    var delta = (int)bytes[p + 2] - bytes[p];
+                    maxRedMinusBlue = Math.Max(maxRedMinusBlue, delta);
+                    if (delta > 3) outsideWarm++;
+                }
+                var root = masked.Single(c => (string?)c.Tag == "SteamRareGlowRoot");
+                var mask = masked.Single(c =>
+                    (string?)c.Tag == "SteamRareGlowRotatingMask");
+                Console.WriteLine(
+                    $"RARE RASTER: card size {cardElement.ActualWidth}x{cardElement.ActualHeight}, " +
+                    $"root={root.ActualWidth}x{root.ActualHeight}, " +
+                    $"inner={mask.ActualWidth}x{mask.ActualHeight}, " +
+                    $"root visible={root.IsVisible}, inner visible={mask.IsVisible}; " +
+                    $"inside-max-alpha={insideMaxAlpha}, outside-max-alpha={outsideMaxAlpha}, " +
+                    $"outside-nonzero={outsideNonzero}, " +
+                    $"outside-warm={outsideWarm}, max(R-B)={maxRedMinusBlue}, glowing={glowing}");
+                foreach (var (x, y) in new[]{(0,35),(5,35),(8,11),(59,30),(64,35),(30,5),(30,65),(30,30)})
+                {
+                    var p = (y * 283 + x) * 4;
+                    Console.WriteLine($"RARE PIXEL ({x},{y}): " +
+                        $"BGRA={bytes[p]},{bytes[p+1]},{bytes[p+2]},{bytes[p+3]}");
+                }
+
                 if (glowing < 16)
                     throw new InvalidOperationException(
                         $"Rare gold is not visible outside the icon ({glowing} luminous pixels).");
