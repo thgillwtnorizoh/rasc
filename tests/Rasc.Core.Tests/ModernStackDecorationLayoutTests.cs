@@ -49,12 +49,15 @@ public sealed class ModernStackDecorationLayoutTests
         Assert.Equal(70d, hidden.Height);
         var halfway = ModernStackDecorationLayout.ForFrames(
             s.Advance(TimeSpan.FromMilliseconds(150)));
-        Assert.Equal(ModernStackGeometry.ViewportHeight, halfway.Bottom);
+        // At half entrance the bottommost card is still 35 units BELOW
+        // the work-area edge. It is the shared WINDOW viewport that clips
+        // those pixels, not the content-union background itself.
+        Assert.Equal(ModernStackGeometry.ViewportHeight + 35, halfway.Bottom);
         Assert.True(halfway.Top < hidden.Top);
         Assert.True(halfway.Height > 0);
         var departing = ModernStackDecorationLayout.ForFrames(
             s.Advance(TimeSpan.FromMilliseconds(5450)));
-        Assert.Equal(ModernStackGeometry.ViewportHeight, departing.Bottom);
+        Assert.Equal(ModernStackGeometry.ViewportHeight + 35, departing.Bottom);
         // One-card envelopes retain 70 units while travelling; multi-card
         // envelopes contract as cards converge toward the shared origin.
         Assert.True(departing.Height <= count * ModernToastScheduler.CardHeight);
