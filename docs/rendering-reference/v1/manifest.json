@@ -1,0 +1,191 @@
+{
+  "schema": "rasc.renderer-reference-lock.v1",
+  "project": "CS:GO Achievements Resurrection (RASC)",
+  "date": "2026-11-18",
+  "baseline_commit": "373d04101d03f51135f2f1b192758efddad12f00",
+  "baseline_branch": "reconstruction/p003-c03-c06-codepen-shadow-composite",
+  "reference_profiles": [
+    "Classic owner-accepted card visual 2026-11-17",
+    "Modern rare C07 owner-accepted gold visual 2026-11-18"
+  ],
+  "statuses": {
+    "classic": "VISUAL DESIGN OWNER-ACCEPTED; P002 OPEN",
+    "modern": "RARE GOLD OWNER-VISUALLY-ACCEPTED; P003 OPEN",
+    "independent_qa": "NOT RUN",
+    "licensing": "UNRESOLVED"
+  },
+  "screenshot_sha256_external_only": {
+    "classic-owner-image-1-275x102": "ac36c86f025e5f33140a8632274b563caa343c60d6b9a3814559b63df37150b9",
+    "classic-owner-image-2-410x162": "106e31ce9961176bbd8727f12da01b8d4bc955b55618d74faf3a48b3d08f9c94",
+    "classic-owner-rasc-crop-228x166": "ea8a9106756029dd98b818d4663f3dafac7b91df9ecb5a36b57b8c146b18df35"
+  },
+  "development_validation": {
+    "run": 44310193628,
+    "core_pass": 162,
+    "core_fail": 0,
+    "real_wpf_smoke_pass": 6,
+    "synthetic_dpi": [
+      96,
+      120,
+      144
+    ],
+    "native_display_dpi_qa": "NOT RUN"
+  },
+  "locked_paths": [
+    {
+      "path": ".github/workflows/windows.yml",
+      "git_blob_sha": "487b48cc3fb552e72b7ffe293ca78fd49daa2dfb",
+      "role": "ci"
+    },
+    {
+      "path": "docs/P002/acceptance/visual-design-baseline.md",
+      "git_blob_sha": "b997cb5125b27bee928cda0dcc6e25fff26620b7",
+      "role": "classic_evidence"
+    },
+    {
+      "path": "docs/P002/fixtures/owner-classic-screenshot-calibration.md",
+      "git_blob_sha": "12be170b0ea8db587f6e36dd4397e03e96601fc9",
+      "role": "classic_evidence"
+    },
+    {
+      "path": "docs/P003/checkpoints/P003-C03-C07.md",
+      "git_blob_sha": "56a2c898dac553787a69a0441d7530b8e50069ce",
+      "role": "modern_evidence"
+    },
+    {
+      "path": "research/P000/classic/reference.md",
+      "git_blob_sha": "ba83d79e09e7e4bef5a3732687f42f92866a7103",
+      "role": "classic_original_research"
+    },
+    {
+      "path": "research/P000/modern/reference.md",
+      "git_blob_sha": "9c3e53317507d694b9db8c0ad74e44003d9a7b08",
+      "role": "modern_supplied_build_research"
+    },
+    {
+      "path": "research/P000/modern/c07-absolute-mask-diagnostic.md",
+      "git_blob_sha": "06ffa37196ef85bbfb89fe8bfdc7107c367c2b2e",
+      "role": "modern_diagnostic"
+    },
+    {
+      "path": "src/Rasc.Core/ClassicPresentationSettings.cs",
+      "git_blob_sha": "96db52ed942bbb54f6287bc581f2a22ad98e972f",
+      "role": "classic_settings"
+    },
+    {
+      "path": "src/Rasc.Core/ClassicToastPixelGrid.cs",
+      "git_blob_sha": "4f1c967237226855c35a53a5ddafb94795af6d1f",
+      "role": "classic_geometry"
+    },
+    {
+      "path": "src/Rasc.Core/ClassicToastScheduler.cs",
+      "git_blob_sha": "ab2721827e199de94c8ace3868365722876ecdea",
+      "role": "classic_schedule"
+    },
+    {
+      "path": "src/Rasc.Core/LegendaryGlowSpec.cs",
+      "git_blob_sha": "8e365989737c2c56903f3c723453e62cc05832aa",
+      "role": "modern_rare_reference"
+    },
+    {
+      "path": "src/Rasc.Core/ModernStackDecorationLayout.cs",
+      "git_blob_sha": "7ab3d9aea207f4e511602400501fbe376e6fe613",
+      "role": "modern_shared_backdrop"
+    },
+    {
+      "path": "src/Rasc.Core/ModernStackGeometry.cs",
+      "git_blob_sha": "e498b4010c1715eb52be824cdfaf5f4c902a6a04",
+      "role": "modern_geometry"
+    },
+    {
+      "path": "src/Rasc.Core/ModernToastContent.cs",
+      "git_blob_sha": "883bdc08ffc556b6cbf14fc2787ec58151bbe4eb",
+      "role": "modern_content"
+    },
+    {
+      "path": "src/Rasc.Core/ModernToastScheduler.cs",
+      "git_blob_sha": "68ff1c37d7fda29012744b8f3dc410b8d7fecf58",
+      "role": "modern_schedule"
+    },
+    {
+      "path": "src/Rasc.Desktop/Assets/SteamRareMasks/NOTICE.md",
+      "git_blob_sha": "770928d7ab7bae3c289a34b21e54fded8d8665e8",
+      "role": "rights_notice"
+    },
+    {
+      "path": "src/Rasc.Desktop/Assets/SteamRareMasks/achievement_square_mask.png",
+      "git_blob_sha": "e81be0ce97e8efbbe663567783f5c7d858da064f",
+      "role": "rights_unresolved_png"
+    },
+    {
+      "path": "src/Rasc.Desktop/Assets/SteamRareMasks/achievement_star_mask.png",
+      "git_blob_sha": "211aca32f4dd2d54515286627d161785f86de3a1",
+      "role": "rights_unresolved_png"
+    },
+    {
+      "path": "src/Rasc.Desktop/ClassicToastCard.xaml",
+      "git_blob_sha": "6f2656d80c1a3ec928e1b93cfc143b199dc6465a",
+      "role": "classic_card"
+    },
+    {
+      "path": "src/Rasc.Desktop/ClassicToastHost.cs",
+      "git_blob_sha": "6e384eb5fc467a0d1d6594070cba2d21f0678d63",
+      "role": "classic_host"
+    },
+    {
+      "path": "src/Rasc.Desktop/ClassicToastStackWindow.xaml",
+      "git_blob_sha": "948f3ce5c0ac52dc4b653dfd9c441be711655263",
+      "role": "classic_shared_window"
+    },
+    {
+      "path": "src/Rasc.Desktop/ClassicToastStackWindow.xaml.cs",
+      "git_blob_sha": "dde196eca47f9d128f9c6ac0ed77eb625ccc1cbb",
+      "role": "classic_shared_window"
+    },
+    {
+      "path": "src/Rasc.Desktop/ModernCssBoxShadow.cs",
+      "git_blob_sha": "f5ca55b1ab939f137961ead13eec0d5cd6b61359",
+      "role": "modern_rare_shadow"
+    },
+    {
+      "path": "src/Rasc.Desktop/ModernRareMaskAssets.cs",
+      "git_blob_sha": "00f83c542a60f7ecbce03192cb0b26f0ab87a3ad",
+      "role": "modern_rare_mask_mapping"
+    },
+    {
+      "path": "src/Rasc.Desktop/ModernToastCard.cs",
+      "git_blob_sha": "fae4b2225a7dd653cfa98424c359c4779994dd7a",
+      "role": "modern_card"
+    },
+    {
+      "path": "src/Rasc.Desktop/ModernToastHost.cs",
+      "git_blob_sha": "4de1423c1100f42069372185803273e264135a71",
+      "role": "modern_host"
+    },
+    {
+      "path": "src/Rasc.Desktop/ModernToastWindow.cs",
+      "git_blob_sha": "9fd2252d5db3dab8c8f3e62e44ef8231e41d89f5",
+      "role": "modern_shared_window"
+    },
+    {
+      "path": "tests/Rasc.Core.Tests/LegendaryGlowSpecTests.cs",
+      "git_blob_sha": "9f3e4eda8983690c3239054e6325ff44d0ca6fda",
+      "role": "modern_rare_tests"
+    },
+    {
+      "path": "tests/Rasc.Core.Tests/ClassicToastSchedulerTests.cs",
+      "git_blob_sha": "222689f86ae83e670422e688776f3121dd148168",
+      "role": "classic_tests"
+    },
+    {
+      "path": "tests/Rasc.Desktop.Smoke/Program.cs",
+      "git_blob_sha": "8d6b729f65c09d53b301af040ee6ce0770113bf7",
+      "role": "real_wpf_smoke"
+    },
+    {
+      "path": "tests/reference/legendary-codepen.html",
+      "git_blob_sha": "81f24160ac3ab6a177dfd6312cdadc1bc61f3637",
+      "role": "modern_browser_fixture"
+    }
+  ]
+}

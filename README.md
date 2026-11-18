@@ -4,6 +4,10 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 
 **Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 passed 117/117 tests. P003-C02 corrects Modern waves, watermark and rare/progress variants in draft PR #7; the final C02 source passed Windows CI 124/124 (0 build warnings/errors) and self-contained x64 publish at SHA 391582703a8b1cc8f415aa8eca293aeac0187309. P003-C03 foreground-app placement and Modern icon/medal correction passed Windows CI 132/132 at SHA 43e598ad97a25fb4230349e852016f976f1e725b. Runtime/independent QA and owner acceptance remain OPEN.
 
+## Preserved achievement notification renderers
+
+**Versioned cross-project visual reference:** [Steam-style renderer archive v1](docs/rendering-reference/v1/README.md) preserves **Classic** and **Modern** as distinct frozen design contracts (geometry, fonts, color, motion, stack, CodePen rare glow, reference fixtures, source hashes, rights and regression tests). The source lock is pinned to C07 `373d04101d03f51135f2f1b192758efddad12f00`. Owner accepted Classic card appearance and C07 rare-glow appearance; original Valve runtime parity, independent Work 1 QA and PNG redistribution permissions are **not** implied. [Documentation draft PR #30](https://github.com/thgillwtnorizoh/rasc/pull/30).
+
 ## Scope and provenance
 
 - Initial integration target: standalone CS:GO (Steam AppID `4465480`) using the GT-610 `csgo-gc` local achievements provider.
