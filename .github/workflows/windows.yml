@@ -37,6 +37,33 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Modern-to-Classic WPF smoke failed" }
           dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-progress
           if ($LASTEXITCODE -ne 0) { throw "Modern progress-icon WPF smoke failed" }
+      - name: Capture exact CodePen fixture in installed Chrome
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:GITHUB_WORKSPACE 'artifacts/Rasc-Wpf-Smoke'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $chromeCandidates = @(
+            (Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Google/Chrome/Application/chrome.exe')
+          )
+          $chrome = $chromeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $chrome) { throw 'Chrome unavailable: cannot establish browser reference pixels.' }
+          $fixture = Get-Content 'tests/reference/legendary-codepen.html' -Raw
+          foreach ($ms in @(900, 2000)) {
+            $time = $ms / 1000
+            $freeze = ".AchievementIconGlowContainer, .AchievementIconGlow { animation-delay: -${time}s !important; animation-play-state: paused !important; }"
+            $html = $fixture.Replace('</style>', "$freeze`n</style>")
+            $referencePath = Join-Path $env:GITHUB_WORKSPACE "tests/reference/legendary-frozen-$ms.html"
+            [System.IO.File]::WriteAllText($referencePath, $html)
+            $referenceUrl = ([System.Uri]::new($referencePath)).AbsoluteUri
+            $imagePath = Join-Path $out "chromium-legendary-$ms.png"
+            & $chrome --headless=new --no-first-run --no-default-browser-check --hide-scrollbars --force-device-scale-factor=1 --window-size=440,240 --screenshot="$imagePath" $referenceUrl
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $imagePath)) {
+              throw "Chrome reference screenshot failed at $ms ms"
+            }
+          }
+          Copy-Item 'src/Rasc.Desktop/Assets/SteamRareMasks/*.png' -Destination $out
       - name: Upload WPF rare-glow frame evidence
         if: always()
         uses: actions/upload-artifact@v4
