@@ -11,6 +11,13 @@ public partial class ClassicToastCard : UserControl
         Description.Text = Sanitize(description);
     }
 
+    internal void ApplyFontChoice(Rasc.Core.PopupFontChoice choice)
+    {
+        var family = PopupFontResolver.Resolve(choice, classic: true);
+        Headline.FontFamily = family;
+        Description.FontFamily = family;
+    }
+
     private static string Sanitize(string? text)
     {
         var safe = (text ?? string.Empty).Replace('\r', ' ').Replace('\t', ' ');

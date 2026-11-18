@@ -23,6 +23,10 @@ public partial class MainWindow : Window
     private readonly ClassicPresentationSettingsStore _presentationStore;
     private ClassicPresentationSettings _presentationSettings;
     private bool _presentationControlsReady;
+    private readonly NotificationCustomizationStore _customizationStore;
+    private readonly NotificationSoundPlayback _soundPlayback = new();
+    private NotificationCustomizationSettings _customization;
+    private bool _customizationControlsReady;
     private UnlockEventStore? _store;
     private AchievementMonitor? _monitor;
     private bool _canClose;
@@ -34,6 +38,9 @@ public partial class MainWindow : Window
         _presentationStore = new ClassicPresentationSettingsStore(
             Path.Combine(_localDirectory, "appearance.json"));
         _presentationSettings = _presentationStore.Load();
+        _customizationStore = new NotificationCustomizationStore(
+            Path.Combine(_localDirectory, "notification-customization.json"));
+        _customization = _customizationStore.Load();
         _classicToasts = new ClassicToastHost(Dispatcher);
         _modernToasts = new ModernToastHost(Dispatcher);
         _presentationGate = new NotificationPresentationGate(profile => profile switch
@@ -54,6 +61,8 @@ public partial class MainWindow : Window
         };
         _classicToasts.SetSettings(_presentationSettings);
         _modernToasts.SetSettings(_presentationSettings);
+        _classicToasts.ConfigureCustomization(_customization.Font, PlayNotificationCue);
+        _modernToasts.ConfigureCustomization(_customization.Font, PlayNotificationCue);
         _profileStore = new NotificationProfileStore(
             Path.Combine(_localDirectory, "notification-profile.txt"));
         _profile = _profileStore.Load();
@@ -69,6 +78,10 @@ public partial class MainWindow : Window
         SelectAppearancePreference(AnimationFpsBox, _presentationSettings.AnimationFps);
         SelectAppearancePreference(PopupSizeBox, _presentationSettings.PopupSizePercent);
         _presentationControlsReady = true;
+        SelectNamedChoice(FontChoiceBox, _customization.Font.ToString());
+        SelectNamedChoice(SoundChoiceBox, _customization.Sound.ToString());
+        _customizationControlsReady = true;
+        UpdateSoundAvailability();
         RecentList.ItemsSource = _history;
         PathBox.Text = LoadLastPath();
         Closing += OnClosing;
@@ -205,6 +218,8 @@ public partial class MainWindow : Window
                 ShutdownTrace.Mark("ModernToastHost dispose error: " + ex.GetType().Name);
             }
 
+            _soundPlayback.Dispose();
+
             try
             {
                 ShutdownTrace.Mark("SQLite.Dispose begin");
@@ -303,6 +318,161 @@ public partial class MainWindow : Window
         _modernToasts.SetSettings(valid);
         if (!_presentationStore.TrySave(valid))
             StatusText.Text = "Appearance updated for this session; failed to save settings.";
+    }
+
+    private static void SelectNamedChoice(
+        System.Windows.Controls.ComboBox box, string name)
+    {
+        foreach (var item in box.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+        {
+            if (string.Equals(item.Tag?.ToString(), name, StringComparison.Ordinal))
+            {
+                box.SelectedItem = item;
+                return;
+            }
+        }
+        box.SelectedIndex = 0;
+    }
+
+    private void FontChoiceBox_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_customizationControlsReady) return;
+        var tag = (FontChoiceBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString();
+        if (!Enum.TryParse<PopupFontChoice>(tag, out var choice) || !Enum.IsDefined(choice))
+            return;
+        UpdateCustomization(_customization with { Font = choice });
+        StatusText.Text = PopupFontResolver.IsInstalled(choice)
+            ? "Popup font selected: " + PopupFontResolver.UserLabel(choice)
+            : "Font not installed on Windows: " + PopupFontResolver.UserLabel(choice)
+              + " (a fallback will render; not a valid typography comparison).";
+    }
+
+    private void SoundChoiceBox_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_customizationControlsReady) return;
+        var tag = (SoundChoiceBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString();
+        if (!Enum.TryParse<NotificationSoundChoice>(tag, out var choice) ||
+            !Enum.IsDefined(choice)) return;
+        UpdateCustomization(_customization with { Sound = choice });
+    }
+
+    private void UpdateCustomization(NotificationCustomizationSettings settings)
+    {
+        var valid = settings.Validated();
+        if (valid == _customization) return;
+        _customization = valid;
+        _classicToasts.ConfigureCustomization(valid.Font, PlayNotificationCue);
+        _modernToasts.ConfigureCustomization(valid.Font, PlayNotificationCue);
+        if (!_customizationStore.TrySave(valid))
+            StatusText.Text = "Popup customizations changed for this session but could not be saved.";
+        UpdateSoundAvailability();
+    }
+
+    private void UpdateSoundAvailability()
+    {
+        var choice = _customization.Sound;
+        if (choice == NotificationSoundChoice.Off)
+        {
+            SoundAvailabilityText.Text = "Sound: silent";
+            return;
+        }
+        var path = NotificationSoundFiles.Resolve(_customization,
+            _localDirectory, AppContext.BaseDirectory);
+        SoundAvailabilityText.Text = path is not null
+            ? "Sound: ready"
+            : choice == NotificationSoundChoice.Custom
+                ? "Custom file unavailable"
+                : "Preset WAV not installed";
+    }
+
+    private void PlayNotificationCue()
+    {
+        // Invoked by the active host ONLY on actual card/wave entrance;
+        // settings changes, holds and animation frames don't retrigger sound.
+        if (_customization.Sound == NotificationSoundChoice.Off) return;
+        var path = NotificationSoundFiles.Resolve(_customization,
+            _localDirectory, AppContext.BaseDirectory);
+        if (path is null)
+        {
+            UpdateSoundAvailability();
+            return;
+        }
+        if (!_soundPlayback.Play(path))
+            StatusText.Text = "Notification sound could not play; check the selected audio codec.";
+    }
+
+    private void ImportPresetSound_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Steam PCM audio (*.wav)|*.wav",
+            CheckFileExists = true,
+            Multiselect = false,
+            Title = "Select one of the two supplied Steam notification WAV files"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var choice = NotificationSoundFiles.IsApprovedPresetFile(
+            dialog.FileName, NotificationSoundChoice.DesktopDefault)
+            ? NotificationSoundChoice.DesktopDefault
+            : NotificationSoundChoice.BigPicture;
+        if (!NotificationSoundFiles.TryImportPreset(
+            dialog.FileName, _localDirectory, choice, out var message))
+        {
+            StatusText.Text = message;
+            return;
+        }
+        UpdateCustomization(_customization with { Sound = choice });
+        SelectNamedChoice(SoundChoiceBox, choice.ToString());
+        UpdateSoundAvailability();
+        StatusText.Text = message;
+    }
+
+    private void ChooseCustomSound_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Supported audio (*.wav;*.mp3;*.wma)|*.wav;*.mp3;*.wma",
+            CheckFileExists = true,
+            Multiselect = false,
+            Title = "Choose a notification sound (up to 16 MB)"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        if (!NotificationSoundFiles.IsValidCustomFile(dialog.FileName))
+        {
+            StatusText.Text = "Custom audio must be a readable WAV, MP3 or WMA file up to 16 MB.";
+            return;
+        }
+        UpdateCustomization(_customization with
+        {
+            Sound = NotificationSoundChoice.Custom,
+            CustomPath = dialog.FileName
+        });
+        SelectNamedChoice(SoundChoiceBox, NotificationSoundChoice.Custom.ToString());
+        UpdateSoundAvailability();
+        StatusText.Text = "Custom audio selected: " + Path.GetFileName(dialog.FileName);
+    }
+
+    private void TestNotificationSound_Click(object sender, RoutedEventArgs e)
+    {
+        if (_customization.Sound == NotificationSoundChoice.Off)
+        {
+            StatusText.Text = "Sound is disabled.";
+            return;
+        }
+        var path = NotificationSoundFiles.Resolve(_customization,
+            _localDirectory, AppContext.BaseDirectory);
+        if (path is null)
+        {
+            StatusText.Text = _customization.Sound == NotificationSoundChoice.Custom
+                ? "Choose a readable custom WAV/MP3/WMA first."
+                : "Import one of the supplied Steam WAVs first, or extract the private sound pack beside the app.";
+            return;
+        }
+        StatusText.Text = _soundPlayback.Play(path)
+            ? "Playing selected sound: " + Path.GetFileName(path)
+            : "Could not play selected sound.";
     }
 
     private void ProfileBox_SelectionChanged(object sender,

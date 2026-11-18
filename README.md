@@ -4,6 +4,14 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 
 **Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 passed 117/117 tests. P003-C02 corrects Modern waves, watermark and rare/progress variants in draft PR #7; the final C02 source passed Windows CI 124/124 (0 build warnings/errors) and self-contained x64 publish at SHA 391582703a8b1cc8f415aa8eca293aeac0187309. P003-C03 foreground-app placement and Modern icon/medal correction passed Windows CI 132/132 at SHA 43e598ad97a25fb4230349e852016f976f1e725b. Runtime/independent QA and owner acceptance remain OPEN.
 
+## P004 — Custom popup font and notification sound (development)
+
+[**P004 owner testing instructions**](docs/P004/README.md) · [Work 2 checkpoint](docs/P004/checkpoints/P004-C01.md) · [draft PR #31](https://github.com/thgillwtnorizoh/rasc/pull/31).
+
+The main window now offers five font selections (accepted per-profile Original, Motiva Sans, Arial, Helvetica, Windows sans-serif default) and four sound selections (Steam desktop default, Big Picture achievement, Custom WAV/MP3/WMA, Off). **Motiva Sans is not confirmed as the original Modern popup face**, and the debug choices require fonts installed on Windows. Cue playback occurs only at actual Classic card entry / Modern wave start. Settings persist in a separate file from FPS/size. Owner-provided Steam WAVs must be imported locally or placed in the optional private sound pack; they are **NOT bundled** in public GitHub artifacts due unresolved redistribution rights.
+
+**Exact tested production candidate:** `70e748ac135043ee1ac87822a77f1f641855f56c`. [Windows CI 44341243839](https://github.com/thgillwtnorizoh/rasc/actions/runs/44341243839) passed **178/178 core**, seven actual WPF smoke, Chrome reference controls, Windows Release build and win-x64 publish. [Public Windows build (no audio)](https://github.com/thgillwtnorizoh/rasc/actions/runs/44341243839/artifacts/14443523147). Actual owner audible test, installed font comparison, independent Work 1 QA, sound/rare mask rights and P004 subsystem acceptance **remain OPEN**. No accepted Classic/Modern geometry, colors, masks or animations changed.
+
 ## Scope and provenance
 
 - Initial integration target: standalone CS:GO (Steam AppID `4465480`) using the GT-610 `csgo-gc` local achievements provider.

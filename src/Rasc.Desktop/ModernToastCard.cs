@@ -16,8 +16,9 @@ namespace Rasc.Desktop;
 internal sealed class ModernToastCard : UserControl
 {
     private readonly Canvas _surface;
+    private PopupFontChoice? _appliedFontChoice;
 
-    internal ModernToastCard(ModernToastContent content)
+    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice)
     {
         Width = ModernToastScheduler.CardWidth;
         Height = ModernToastScheduler.CardHeight;
@@ -116,6 +117,20 @@ internal sealed class ModernToastCard : UserControl
         }
 
         Content = _surface;
+        ApplyFontChoice(fontChoice);
+    }
+
+    internal void ApplyFontChoice(PopupFontChoice fontChoice)
+    {
+        // The shared wave reapplies frame positions at render cadence. Font
+        // changes must never invalidate text layout on EVERY animation frame.
+        if (_appliedFontChoice == fontChoice) return;
+        _appliedFontChoice = fontChoice;
+        // Only actual popup text: the placeholder icon is nested in its
+        // Border and must retain the accepted visual size and face.
+        var family = PopupFontResolver.Resolve(fontChoice, classic: false);
+        foreach (var text in _surface.Children.OfType<TextBlock>())
+            text.FontFamily = family;
     }
 
     internal static Brush CreateBackdropGradient()

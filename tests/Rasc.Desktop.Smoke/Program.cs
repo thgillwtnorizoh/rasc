@@ -22,9 +22,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings");
             return 2;
         }
         var scenario = args[0];
@@ -58,6 +58,10 @@ internal static class Program
                 ?? throw new InvalidOperationException("Missing rare glow fixture button.");
             var waveCount = (ComboBox?)window.FindName("PreviewWaveCountBox")
                 ?? throw new InvalidOperationException("Missing wave count selector.");
+            var fontBox = (ComboBox?)window.FindName("FontChoiceBox")
+                ?? throw new InvalidOperationException("Missing popup font selector.");
+            var soundBox = (ComboBox?)window.FindName("SoundChoiceBox")
+                ?? throw new InvalidOperationException("Missing notification sound selector.");
 
             void Select(string name)
             {
@@ -66,6 +70,15 @@ internal static class Program
                 profile.SelectedItem = match;
                 if ((string?)((ComboBoxItem)profile.SelectedItem).Tag != name)
                     throw new InvalidOperationException("Profile switch did not commit: " + name);
+            }
+
+            static void SelectChoice(ComboBox box, string tag)
+            {
+                var match = box.Items.OfType<ComboBoxItem>()
+                    .Single(item => (string?)item.Tag == tag);
+                box.SelectedItem = match;
+                if ((string?)((ComboBoxItem)box.SelectedItem).Tag != tag)
+                    throw new InvalidOperationException("Preference did not commit: " + tag);
             }
 
             static void Click(Button button) =>
@@ -497,6 +510,79 @@ internal static class Program
                         else if (stage == 2 && elapsed > 8050)
                         {
                             if (classicCount() != 0) { Fail("Classic did not exit cleanly."); return; }
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario == "font-sound-settings")
+                    {
+                        if (stage == 0)
+                        {
+                            Select("Modern");
+                            SelectChoice(soundBox, "Off");
+                            SelectChoice(fontBox, "Arial");
+                            Click(progress);
+                            stage++;
+                        }
+                        else if (stage == 1 && elapsed > 850)
+                        {
+                            if (modernCount() != 1)
+                            {
+                                Fail("Modern font test popup not shown."); return;
+                            }
+                            var host = app.Windows.Cast<Window>().Single(w =>
+                                w.IsVisible && w.GetType().Name == "ModernToastWindow");
+                            var texts = Descendants(host).OfType<TextBlock>()
+                                .Where(t => t.Text is "Arrest Warrant" or "(19/50)").ToArray();
+                            if (texts.Length != 2 || texts.Any(t => t.FontFamily.Source != "Arial"))
+                            {
+                                Fail("Modern popup text did not adopt Arial."); return;
+                            }
+                            // Verify changing font on an already visible popup.
+                            SelectChoice(fontBox, "Helvetica");
+                            if (texts.Any(t => !t.FontFamily.Source.StartsWith("Helvetica",
+                                    StringComparison.Ordinal)))
+                            {
+                                Fail("Modern live font update failed."); return;
+                            }
+                            if ((soundBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() != "Off")
+                            {
+                                Fail("Silent sound preference was lost."); return;
+                            }
+                            modernObserved = true;
+                            stage++;
+                        }
+                        else if (stage == 2 && elapsed > 6500)
+                        {
+                            if (modernCount() != 0) { Fail("Modern test card did not retire."); return; }
+                            Select("Classic");
+                            SelectChoice(fontBox, "Arial");
+                            Click(preview);
+                            stage++;
+                        }
+                        else if (stage == 3 && elapsed > 7500)
+                        {
+                            if (classicCount() != 1)
+                            {
+                                Fail("Classic font test popup not shown."); return;
+                            }
+                            var host = app.Windows.Cast<Window>().Single(w =>
+                                w.IsVisible && w.GetType().Name == "ClassicToastStackWindow");
+                            var texts = Descendants(host).OfType<TextBlock>()
+                                .Where(t => t.Name is "Headline" or "Description").ToArray();
+                            if (texts.Length != 2 || texts.Any(t => t.FontFamily.Source != "Arial"))
+                            {
+                                Fail("Classic popup text did not adopt Arial."); return;
+                            }
+                            classicObserved = true;
+                            stage++;
+                        }
+                        else if (stage == 4 && elapsed > 15000)
+                        {
+                            if (classicCount() != 0)
+                            {
+                                Fail("Classic font test card did not retire."); return;
+                            }
                             interval.Stop();
                             app.Shutdown();
                         }
