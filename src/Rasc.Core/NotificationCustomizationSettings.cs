@@ -150,7 +150,7 @@ public static class NotificationSoundFiles
             return false;
         }
         var output = Path.Combine(localRascDirectory, "sounds", filename);
-        var temporary = output + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var temporary = output + "." + Guid.NewGuid().ToString("N") + ".wav"; // Must retain WAV extension for the verified-format gate.
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
