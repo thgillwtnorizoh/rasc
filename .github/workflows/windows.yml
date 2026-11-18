@@ -34,6 +34,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Modern-to-Classic WPF smoke failed" }
           dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-progress
           if ($LASTEXITCODE -ne 0) { throw "Modern progress-icon WPF smoke failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-rare
+          if ($LASTEXITCODE -ne 0) { throw "Modern rare PNG-mask glow visibility/animation smoke failed" }
       - name: Publish self-contained Windows x64
         run: dotnet publish src/Rasc.Desktop/Rasc.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/Rasc-Windows-x64 -p:PublishSingleFile=false
       - name: Upload Windows application

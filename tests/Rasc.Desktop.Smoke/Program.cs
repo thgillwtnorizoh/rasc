@@ -21,9 +21,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare");
             return 2;
         }
         var scenario = args[0];
@@ -53,6 +53,8 @@ internal static class Program
                 ?? throw new InvalidOperationException("Missing wave fixture button.");
             var progress = (Button?)window.FindName("PreviewProgressButton")
                 ?? throw new InvalidOperationException("Missing progress fixture button.");
+            var rare = (Button?)window.FindName("PreviewRareButton")
+                ?? throw new InvalidOperationException("Missing rare glow fixture button.");
             var waveCount = (ComboBox?)window.FindName("PreviewWaveCountBox")
                 ?? throw new InvalidOperationException("Missing wave count selector.");
 
@@ -161,8 +163,93 @@ internal static class Program
                 }
             }
 
+            static IEnumerable<DependencyObject> Descendants(DependencyObject ancestor)
+            {
+                for (var i = 0; i < VisualTreeHelper.GetChildrenCount(ancestor); i++)
+                {
+                    var next = VisualTreeHelper.GetChild(ancestor, i);
+                    yield return next;
+                    foreach (var child in Descendants(next))
+                        yield return child;
+                }
+            }
+
+            byte[] SnapshotRareCard()
+            {
+                var host = app.Windows.Cast<Window>()
+                    .Single(w => w.IsVisible &&
+                        w.GetType().Name == "ModernToastWindow");
+                if (host.Content is not Canvas canvas)
+                    throw new InvalidOperationException("Modern rare host lacks viewport.");
+                var card = canvas.Children.Cast<UIElement>()
+                    .Single(c => c.GetType().Name == "ModernToastCard");
+
+                var masked = Descendants(card)
+                    .OfType<Canvas>().Where(c =>
+                        c.Tag is "SteamRareGlowRoot" or "SteamRareGlowRotatingMask")
+                    .ToArray();
+                if (masked.Length != 2 ||
+                    masked.Any(c => c.OpacityMask is not ImageBrush mask ||
+                        mask.ImageSource is not BitmapSource bitmap ||
+                        bitmap.PixelWidth != 64 || bitmap.PixelHeight != 64))
+                    throw new InvalidOperationException(
+                        "Source PNG opacity masks not installed on rare glow layers.");
+
+                foreach (var component in masked)
+                {
+                    var png = (BitmapSource)((ImageBrush)component.OpacityMask!).ImageSource;
+                    var pixelsSource = new FormatConvertedBitmap(
+                        png, PixelFormats.Bgra32, null, 0);
+                    var raw = new byte[64 * 64 * 4];
+                    pixelsSource.CopyPixels(raw, 64 * 4, 0);
+                    var alpha = Enumerable.Range(0, 64 * 64)
+                        .Select(i => raw[i * 4 + 3]).ToArray();
+                    Console.WriteLine(
+                        $"RARE MASK {component.Tag}: alpha {alpha.Min()}..{alpha.Max()}, " +
+                        $"nonzero={alpha.Count(a => a > 0)}, " +
+                        $"partial={alpha.Count(a => a is > 0 and < 255)}, " +
+                        $"center={alpha[(32 * 64 + 32)]}");
+                    if (alpha.Max() == 0 || alpha.Distinct().Count() < 2)
+                        throw new InvalidOperationException(
+                            $"Mask {component.Tag} has no usable alpha image.");
+                }
+
+                // Captures exactly the rendered WPF rare card. The card's
+                // background is transparent, so color outside the 48px icon
+                // proves the gold halo itself is visible, not the shared wave
+                // background or the yellow star in its center.
+                var cardElement = (FrameworkElement)card;
+                cardElement.UpdateLayout();
+                var raster = new RenderTargetBitmap(283, 70, 96, 96,
+                    PixelFormats.Pbgra32);
+                raster.Render(cardElement);
+                var bytes = new byte[283 * 70 * 4];
+                raster.CopyPixels(bytes, 283 * 4, 0);
+                var glowing = 0;
+                for (var y = 0; y < 70; y++)
+                for (var x = 0; x < 68; x++)
+                {
+                    if (x is >= 9 and <= 57 && y is >= 11 and <= 59)
+                        continue;
+                    var p = (y * 283 + x) * 4;
+                    // PixelFormats.Pbgra32 is BGRA *premultiplied*.
+                    var blue = bytes[p];
+                    var green = bytes[p + 1];
+                    var red = bytes[p + 2];
+                    var alpha = bytes[p + 3];
+                    if (alpha > 16 && red > blue + 10 && green > blue + 3)
+                        glowing++;
+                }
+
+                if (glowing < 16)
+                    throw new InvalidOperationException(
+                        $"Rare gold is not visible outside the icon ({glowing} luminous pixels).");
+                return bytes;
+            }
+
             var clock = Stopwatch.StartNew();
             var stage = 0;
+            byte[]? rareFirstFrame = null;
             var interval = new DispatcherTimer(DispatcherPriority.Normal)
             {
                 Interval = TimeSpan.FromMilliseconds(50)
@@ -202,6 +289,64 @@ internal static class Program
                         else if (stage == 2 && elapsed > 8050)
                         {
                             if (classicCount() != 0) { Fail("Classic did not exit cleanly."); return; }
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario == "modern-rare")
+                    {
+                        if (stage == 0)
+                        {
+                            Select("Modern");
+                            Click(rare);
+                            stage++;
+                        }
+                        else if (stage == 1 && elapsed > 900)
+                        {
+                            if (modernWindowCount() != 1 || modernCount() != 1)
+                            {
+                                Fail("Rare notification did not appear.");
+                                return;
+                            }
+                            rareFirstFrame = SnapshotRareCard();
+                            modernObserved = true;
+                            stage++;
+                        }
+                        else if (stage == 2 && elapsed > 2000)
+                        {
+                            var nextFrame = SnapshotRareCard();
+                            if (rareFirstFrame is null)
+                                throw new InvalidOperationException(
+                                    "Missing first rare-glow animation frame.");
+
+                            // A static golden outline cannot satisfy this
+                            // check: require actual moving halo pixels.
+                            var changed = 0;
+                            for (var y = 0; y < 70; y++)
+                            for (var x = 0; x < 68; x++)
+                            {
+                                if (x is >= 9 and <= 57 && y is >= 11 and <= 59)
+                                    continue;
+                                var p = (y * 283 + x) * 4;
+                                if (Math.Abs(nextFrame[p] - rareFirstFrame[p]) > 4 ||
+                                    Math.Abs(nextFrame[p + 1] - rareFirstFrame[p + 1]) > 4 ||
+                                    Math.Abs(nextFrame[p + 2] - rareFirstFrame[p + 2]) > 4)
+                                    changed++;
+                            }
+                            if (changed < 12)
+                            {
+                                Fail($"Rare halo is static or invisible: only {changed} moving pixels.");
+                                return;
+                            }
+                            stage++;
+                        }
+                        else if (stage == 3 && elapsed > 6550)
+                        {
+                            if (modernCount() != 0)
+                            {
+                                Fail("Rare notification did not exit cleanly.");
+                                return;
+                            }
                             interval.Stop();
                             app.Shutdown();
                         }
@@ -294,9 +439,9 @@ internal static class Program
             // HWND. Require Modern observation only for scenarios that
             // actually request a Modern presentation.
             bool requireClassic =
-                scenario is not ("modern-progress" or "modern-stack-two");
+                scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare");
             bool requireModern =
-                scenario is "modern-classic" or "modern-progress" or "modern-stack-two";
+                scenario is "modern-classic" or "modern-progress" or "modern-stack-two" or "modern-rare";
             if ((requireClassic && !classicObserved) ||
                 (requireModern && !modernObserved))
             {
