@@ -1,3 +1,4 @@
+using System.IO;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -204,6 +205,62 @@ internal static class Program
                     throw new InvalidOperationException(
                         "Source PNG opacity masks not installed on rare glow layers.");
 
+                // Verify the CSS 100%-mask box, not just the presence of PNGs.
+                foreach (var element in masked)
+                {
+                    var b = (ImageBrush)element.OpacityMask!;
+                    if (b.ViewportUnits != BrushMappingMode.Absolute ||
+                        b.ViewboxUnits != BrushMappingMode.Absolute ||
+                        b.Viewport != new Rect(0, 0, element.Width, element.Height) ||
+                        b.Viewbox != new Rect(0, 0, 64, 64))
+                        throw new InvalidOperationException(
+                            $"Source mask was not mapped to the 68/88px CSS box: {element.Tag}");
+                }
+
+                var wrapper = Descendants(card).OfType<Canvas>()
+                    .Single(c => (string?)c.Tag == "LegendaryIconWrapper");
+                if (wrapper.Width != LegendaryGlowSpec.IconSize ||
+                    wrapper.Height != LegendaryGlowSpec.IconSize ||
+                    wrapper.ClipToBounds ||
+                    Canvas.GetLeft(wrapper) != 10 ||
+                    Canvas.GetTop(wrapper) != 11)
+                    throw new InvalidOperationException(
+                        "CodePen icon wrapper dimensions, position or overflow changed.");
+                var rootElement = masked.Single(c =>
+                    (string?)c.Tag == "SteamRareGlowRoot");
+                // A CSS mask clips the content to its *mask box*.
+                // WPF OpacityMask by itself does not clip overflow from
+                // nested rotated children; a real WPF clip is required.
+                if (!rootElement.ClipToBounds)
+                    throw new InvalidOperationException(
+                        "WPF root mask box must clip rotating descendants.");
+
+                var shadows = Descendants(wrapper).OfType<Image>()
+                    .Where(i => (string?)i.Tag == "CodePenDualBoxShadow").ToArray();
+                if (shadows.Length != 1 || shadows[0].Source is not BitmapSource src ||
+                    src.PixelWidth != 128 || src.PixelHeight != 128)
+                    throw new InvalidOperationException(
+                        "CSS dual shadow must use one 128px transparent raster.");
+                if (Descendants(wrapper).OfType<UIElement>().Any(element =>
+                        element.Effect is System.Windows.Media.Effects.DropShadowEffect))
+                    throw new InvalidOperationException(
+                        "Regression: opaque WPF DropShadowEffect plates reintroduced.");
+
+                var shadowPixels = new byte[128 * 128 * 4];
+                src.CopyPixels(shadowPixels, 128 * 4, 0);
+                int ShadowAlpha(int x) => shadowPixels[(64 * 128 + x) * 4 + 3];
+                // Two separated blur radii must produce a smooth falloff
+                // outside the CSS-spread 48px square; a hard gold border
+                // fails this test even if its overall glow is bright.
+                if (!(ShadowAlpha(36) > ShadowAlpha(24) &&
+                      ShadowAlpha(24) > ShadowAlpha(8) &&
+                      ShadowAlpha(8) <= 2))
+                    throw new InvalidOperationException(
+                        "Two-shadow CSS blur/spread profile is not smooth.");
+                Console.WriteLine(
+                    $"CODEPEN SHADOW alpha x36={ShadowAlpha(36)}, " +
+                    $"x24={ShadowAlpha(24)}, x8={ShadowAlpha(8)}");
+
                 foreach (var component in masked)
                 {
                     var png = (BitmapSource)((ImageBrush)component.OpacityMask!).ImageSource;
@@ -252,7 +309,7 @@ internal static class Program
                 for (var y = 0; y < 70; y++)
                 for (var x = 0; x < 68; x++)
                 {
-                    if (x is >= 9 and <= 57 && y is >= 11 and <= 59)
+                    if (x is >= 10 and < 58 && y is >= 11 and < 59)
                         continue;
                     var p = (y * 283 + x) * 4;
                     // PixelFormats.Pbgra32 is BGRA *premultiplied*.
@@ -275,7 +332,7 @@ internal static class Program
                 for (var x = 0; x < 68; x++)
                 {
                     var p = (y * 283 + x) * 4;
-                    var inside = x is >= 9 and <= 57 && y is >= 11 and <= 59;
+                    var inside = x is >= 10 and < 58 && y is >= 11 and < 59;
                     var a = (int)bytes[p + 3];
                     if (inside) { insideMaxAlpha = Math.Max(insideMaxAlpha, a); continue; }
                     outsideMaxAlpha = Math.Max(outsideMaxAlpha, a);
@@ -302,10 +359,100 @@ internal static class Program
                         $"BGRA={bytes[p]},{bytes[p+1]},{bytes[p+2]},{bytes[p+3]}");
                 }
 
+                var bright = 0;
+                for (var y = 0; y < 70; y++)
+                for (var x = 0; x < 68; x++)
+                {
+                    if (x is >= 10 and < 58 && y is >= 11 and < 59)
+                        continue;
+                    var p = (y * 283 + x) * 4;
+                    if (bytes[p + 2] >= 160 &&
+                        bytes[p + 2] > bytes[p] + 10)
+                        bright++;
+                }
+                Console.WriteLine($"CODEPEN COMPARISON: bright gold pixels = {bright}, " +
+                    $"tinted halo pixels = {glowing}");
+                // The masked 68px root ends at x=68. A CSS 16px blurred
+                // shadow may leave a FAINT tail after that, but intense
+                // rotating-gold rays cannot reach the title's x>=83 area.
+                // This guards the original C06 WPF overflow bug seen in
+                // actual exported bitmap evidence, not an arbitrary fit.
+                var spilledRays = 0;
+                for (var y = 0; y < 70; y++)
+                for (var x = 83; x <= 110; x++)
+                {
+                    var p = (y * 283 + x) * 4;
+                    var blue = bytes[p];
+                    var green = bytes[p + 1];
+                    var red = bytes[p + 2];
+                    if (red >= 145 && red > green + 10 &&
+                        green > blue + 10)
+                        spilledRays++;
+                }
+                Console.WriteLine($"CODEPEN MASK BOX: spill pixels beyond x83={spilledRays}");
+                if (spilledRays != 0)
+                    throw new InvalidOperationException(
+                        $"WPF root mask leaked {spilledRays} bright rays into text.");
+                // The exact square-mask edge is ~transparent (x0,y32
+                // alpha=1/255). At the left boundary only the far, faint
+                // CSS shadow should remain, never a fully bright radial ray.
+                // Unlike merely checking mask brush type, this fails on the
+                // previous C06 relative-mask raster.
+                foreach (var x in new[] { 0, 67 })
+                {
+                    var p = (35 * 283 + x) * 4;
+                    if (bytes[p + 2] - bytes[p] > 20)
+                        throw new InvalidOperationException(
+                            $"Gold ray overbrights low-alpha square mask edge x={x}.");
+                }
                 if (glowing < 16)
                     throw new InvalidOperationException(
                         $"Rare gold is not visible outside the icon ({glowing} luminous pixels).");
                 return bytes;
+            }
+
+            void SaveRareFrame(byte[] bytes, string fileName)
+            {
+                var directory = Environment.GetEnvironmentVariable(
+                    "RASC_SMOKE_FRAME_DIR");
+                if (string.IsNullOrWhiteSpace(directory)) return;
+                Directory.CreateDirectory(directory);
+                var frame = BitmapSource.Create(283, 70, 96, 96,
+                    PixelFormats.Pbgra32, null, bytes, 283 * 4);
+                frame.Freeze();
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(frame));
+                using var file = File.Create(Path.Combine(directory, fileName));
+                encoder.Save(file);
+            }
+
+            // Render-target output scaling, NOT physical monitor DPI qualification.
+            void SaveRareFrameAtRasterDpi(int dpi)
+            {
+                var directory = Environment.GetEnvironmentVariable("RASC_SMOKE_FRAME_DIR");
+                if (string.IsNullOrWhiteSpace(directory)) return;
+                var host = app.Windows.Cast<Window>()
+                    .Single(w => w.IsVisible && w.GetType().Name == "ModernToastWindow");
+                if (host.Content is not Canvas viewport)
+                    throw new InvalidOperationException("Missing Modern WPF viewport.");
+                viewport.UpdateLayout();
+                var scale = dpi / 96.0;
+                var width = (int)Math.Ceiling(283 * scale);
+                var height = (int)Math.Ceiling(ModernStackGeometry.ViewportHeight * scale);
+                var bitmap = new RenderTargetBitmap(width, height, dpi, dpi, PixelFormats.Pbgra32);
+                bitmap.Render(viewport);
+                var top = (int)Math.Round(140 * scale);
+                var cardHeight = (int)Math.Ceiling(70 * scale);
+                if (top + cardHeight > height)
+                    throw new InvalidOperationException($"DPI crop exceeds viewport at {dpi}dpi.");
+                var crop = new CroppedBitmap(bitmap, new Int32Rect(0, top, width, cardHeight));
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(crop));
+                Directory.CreateDirectory(directory);
+                using var stream = File.Create(Path.Combine(directory,
+                    $"c07-rare-frame-raster-{dpi}dpi.png"));
+                encoder.Save(stream);
+                Console.WriteLine($"RARE RASTER DPI: {dpi}dpi {width}x{cardHeight}");
             }
 
             var clock = Stopwatch.StartNew();
@@ -370,12 +517,16 @@ internal static class Program
                                 return;
                             }
                             rareFirstFrame = SnapshotRareCard();
+                            SaveRareFrame(rareFirstFrame, "c06-rare-frame-0900ms.png");
+                            SaveRareFrameAtRasterDpi(120);
+                            SaveRareFrameAtRasterDpi(144);
                             modernObserved = true;
                             stage++;
                         }
                         else if (stage == 2 && elapsed > 2000)
                         {
                             var nextFrame = SnapshotRareCard();
+                            SaveRareFrame(nextFrame, "c06-rare-frame-2000ms.png");
                             if (rareFirstFrame is null)
                                 throw new InvalidOperationException(
                                     "Missing first rare-glow animation frame.");
@@ -386,7 +537,7 @@ internal static class Program
                             for (var y = 0; y < 70; y++)
                             for (var x = 0; x < 68; x++)
                             {
-                                if (x is >= 9 and <= 57 && y is >= 11 and <= 59)
+                                if (x is >= 10 and < 58 && y is >= 11 and < 59)
                                     continue;
                                 var p = (y * 283 + x) * 4;
                                 if (Math.Abs(nextFrame[p] - rareFirstFrame[p]) > 4 ||

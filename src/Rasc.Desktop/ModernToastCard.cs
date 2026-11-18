@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using Rasc.Core;
 
@@ -204,7 +203,8 @@ internal sealed class ModernToastCard : UserControl
     // LegendaryAchievement, not the separate SteamCommunity conic-gradient
     // implementation. Its glow is a RADIAL gradient: nine source-matched
     // stops, nested 10-unit masks, 18s reverse mask and 6s forward light.
-    // The CodePen's embedded PNG masks are intentionally NOT redistributed.
+    // Source PNG alpha masks are isolated in this owner-test branch; see
+    // Assets/SteamRareMasks/NOTICE.md for the unresolved rights gate.
     private static readonly Brush LegendaryRadial = CreateLegendaryRadial();
 
     private static Brush CreateLegendaryRadial()
@@ -238,9 +238,14 @@ internal sealed class ModernToastCard : UserControl
         {
             Width = LegendaryGlowSpec.OuterSize,
             Height = LegendaryGlowSpec.OuterSize,
+            // A CSS mask constrains the rasterized element and its
+            // overflowing descendants to the element's mask box. WPF's
+            // OpacityMask alone does NOT enforce this box: C06 screenshot
+            // diagnostics showed rotating rays reaching the title area.
+            // This explicit WPF clip restores the source's masked box.
             ClipToBounds = true,
             Tag = "SteamRareGlowRoot",
-            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Square),
+            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Square, LegendaryGlowSpec.OuterSize),
             IsHitTestVisible = false
         };
 
@@ -250,7 +255,7 @@ internal sealed class ModernToastCard : UserControl
             Height = LegendaryGlowSpec.MiddleSize,
             RenderTransformOrigin = new Point(.5, .5),
             Tag = "SteamRareGlowRotatingMask",
-            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Star),
+            OpacityMask = ModernRareMaskAssets.AlphaBrush(ModernRareMaskAssets.Star, LegendaryGlowSpec.MiddleSize),
             IsHitTestVisible = false
         };
         Canvas.SetLeft(container, -LegendaryGlowSpec.MaskPadding);
@@ -288,69 +293,66 @@ internal sealed class ModernToastCard : UserControl
         return root;
     }
 
-    private static Border ShadowPlate(Color gold, double blur, double opacity)
+    private static FrameworkElement CreateIcon(bool rare)
     {
-        return new Border
+        // The CodePen's real wrapper is 48x48. The former extra 54x54
+        // WPF canvas introduced its own geometry and shadow layer offsets.
+        // Its only outer clipping is the accepted 283x70 toast viewport.
+        // Place its 68px masked glow at x=0..68 (48px icon x=10..58).
+        const double wrapperLeft = 10;
+        const double wrapperTop = 11;
+
+        var wrapper = new Canvas
+        {
+            Width = LegendaryGlowSpec.IconSize,
+            Height = LegendaryGlowSpec.IconSize,
+            ClipToBounds = false,
+            Tag = rare ? "LegendaryIconWrapper" : "OrdinaryIconWrapper",
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(wrapper, wrapperLeft);
+        Canvas.SetTop(wrapper, wrapperTop);
+
+        if (rare)
+        {
+            // Exact CodePen nesting: fixed 68px root at -10,-10; a
+            // reverse-spinning 88px star at another -10; and the
+            // forward-spinning 108px radial light at one more -10.
+            var halo = CreateLegendaryHalo();
+            Canvas.SetLeft(halo, -LegendaryGlowSpec.MaskPadding);
+            Canvas.SetTop(halo, -LegendaryGlowSpec.MaskPadding);
+            wrapper.Children.Add(halo);
+
+            // BOTH shadows are painted onto ONE precomposed transparent
+            // layer, behind the one real 48px icon. This avoids the two
+            // independently OPAQUE WPF Border/DropShadowEffect render
+            // passes that made the C05 screenshot too aggressive.
+            var shadow = new Image
+            {
+                Width = ModernCssBoxShadow.SpriteSize,
+                Height = ModernCssBoxShadow.SpriteSize,
+                Source = ModernCssBoxShadow.Shadow,
+                Tag = "CodePenDualBoxShadow",
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(shadow, -ModernCssBoxShadow.IconOrigin);
+            Canvas.SetTop(shadow, -ModernCssBoxShadow.IconOrigin);
+            wrapper.Children.Add(shadow);
+        }
+
+        // The actual RASC achievement icon is artwork, not the CodePen's
+        // demonstration-only blank #222 fakeIcon. Keep its existing dark
+        // face and yellow rare star to isolate glow fidelity from icon art.
+        var icon = new Border
         {
             Width = LegendaryGlowSpec.IconSize,
             Height = LegendaryGlowSpec.IconSize,
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromRgb(13, 16, 22)),
-            Effect = new DropShadowEffect
-            {
-                Color = gold,
-                BlurRadius = blur,
-                ShadowDepth = 0,
-                Opacity = opacity
-            },
-            IsHitTestVisible = false
-        };
-    }
-
-    private static FrameworkElement CreateIcon(bool rare)
-    {
-        var iconCanvas = new Canvas
-        {
-            Width = 54, Height = 54,
-            IsHitTestVisible = false
-        };
-        Canvas.SetLeft(iconCanvas, 6);
-        Canvas.SetTop(iconCanvas, 8);
-
-        if (rare)
-        {
-            // CodePen nested layout: root -10 around a 48px icon, then
-            // middle -10 inside root and moving light -10 inside middle.
-            // Two independent near/far shadows reproduce the author's
-            // specific CSS values rather than one invented gold border.
-            var halo = CreateLegendaryHalo();
-            Canvas.SetLeft(halo, 3 - LegendaryGlowSpec.MaskPadding);
-            Canvas.SetTop(halo, 3 - LegendaryGlowSpec.MaskPadding);
-            iconCanvas.Children.Add(halo);
-
-            var farShadow = ShadowPlate(Color.FromRgb(255, 217, 78),
-                LegendaryGlowSpec.FarShadowBlur,
-                LegendaryGlowSpec.FarShadowOpacity);
-            Canvas.SetLeft(farShadow, 3);
-            Canvas.SetTop(farShadow, 3);
-            iconCanvas.Children.Add(farShadow);
-
-            var nearShadow = ShadowPlate(Color.FromRgb(255, 184, 78),
-                LegendaryGlowSpec.NearShadowBlur,
-                LegendaryGlowSpec.NearShadowOpacity);
-            Canvas.SetLeft(nearShadow, 3);
-            Canvas.SetTop(nearShadow, 3);
-            iconCanvas.Children.Add(nearShadow);
-        }
-
-        var image = new Border
-        {
-            Width = 48, Height = 48,
-            BorderThickness = new Thickness(0),
-            Background = new SolidColorBrush(Color.FromRgb(13, 16, 22)),
+            Tag = "AchievementIconFace",
             Child = new TextBlock
             {
-                Text = "★", // Deliberate fixture until catalog icon assets.
+                Text = "★", // Deliberate preview icon until catalog assets.
                 FontSize = 23,
                 Foreground = rare
                     ? new SolidColorBrush(Color.FromRgb(255, 216, 70))
@@ -359,10 +361,8 @@ internal sealed class ModernToastCard : UserControl
                 VerticalAlignment = VerticalAlignment.Center
             }
         };
-        Canvas.SetLeft(image, 3);
-        Canvas.SetTop(image, 3);
-        iconCanvas.Children.Add(image);
-        return iconCanvas;
+        wrapper.Children.Add(icon);
+        return wrapper;
     }
 
     internal void Apply(ModernToastFrame frame)
