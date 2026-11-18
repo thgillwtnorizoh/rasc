@@ -15,7 +15,9 @@ namespace Rasc.Desktop;
 internal sealed class ModernToastHost : IDisposable
 {
     private readonly ModernToastScheduler _schedule = new();
-    private readonly Dictionary<string, ModernToastWindow> _windows = new(StringComparer.Ordinal);
+    // ONE shared topmost window represents the full Modern wave, rather than
+    // one DWM-composited HWND per card (the source of inter-card seams).
+    private ModernToastWindow? _window;
     private readonly Dictionary<string, ModernToastContent> _content = new(StringComparer.Ordinal);
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly DispatcherTimer _holdWake;
@@ -49,7 +51,7 @@ internal sealed class ModernToastHost : IDisposable
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
-    internal bool IsIdle => _schedule.IsIdle && _windows.Count == 0 && !_batchWake.IsEnabled;
+    internal bool IsIdle => _schedule.IsIdle && _window is null && !_batchWake.IsEnabled;
 
     internal void SetSettings(ClassicPresentationSettings settings)
     {
@@ -123,7 +125,7 @@ internal sealed class ModernToastHost : IDisposable
         // WPF Rendering is unsubscribed during the normal five-second hold.
         // Reposition only: timers remain based on the original monotonic
         // waveStart and never restart when focus/monitor/app bounds change.
-        if (!_disposed && _windows.Count > 0) Tick();
+        if (!_disposed && _window is not null) Tick();
     }
 
     private void OnBatchWake(object? sender, EventArgs args)
@@ -210,32 +212,30 @@ internal sealed class ModernToastHost : IDisposable
         if (_batchWake.IsEnabled && _schedule.ActiveCount == 0) return;
 
         var frames = _schedule.Advance(_clock.Elapsed);
-        var visible = new HashSet<string>(
-            frames.Select(f => f.Event.EventId), StringComparer.Ordinal);
-        foreach (var id in _windows.Keys.Where(id => !visible.Contains(id)).ToArray())
-        {
-            _windows[id].Close();
-            _windows.Remove(id);
-            _content.Remove(id);
-        }
-
         var fullscreen = ForegroundWindowPlacement.CaptureFullscreen();
         var work = SystemParameters.WorkArea;
         var scale = fullscreen is { } target
             ? target.ModernScale(_sizePercent)
             : LegacyDesktopScale(work, _sizePercent);
-        // Scheduler returns top-to-bottom. Last-created lower windows naturally
-        // cover earlier upper ones while entering from the common origin.
-        foreach (var frame in frames)
+
+        if (frames.Count == 0)
         {
-            if (!_windows.TryGetValue(frame.Event.EventId, out var window))
+            if (_window is not null)
             {
-                window = new ModernToastWindow(_content[frame.Event.EventId]);
-                _windows.Add(frame.Event.EventId, window);
-                window.Apply(frame, scale, work, fullscreen);
-                window.Show();
+                _window.Close();
+                _window = null;
             }
-            else window.Apply(frame, scale, work, fullscreen);
+            if (_schedule.IsIdle) _content.Clear();
+        }
+        else
+        {
+            var newlyCreated = _window is null;
+            _window ??= new ModernToastWindow();
+            var retired = _window.Apply(frames, _content, scale, work, fullscreen);
+            foreach (var id in retired)
+                _content.Remove(id);
+            if (newlyCreated)
+                _window.Show();
         }
 
         if (_schedule.IsIdle)
@@ -270,8 +270,8 @@ internal sealed class ModernToastHost : IDisposable
         _batchWake.Tick -= OnBatchWake;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
-        foreach (var window in _windows.Values) window.Close();
-        _windows.Clear();
+        _window?.Close();
+        _window = null;
         _content.Clear();
         _schedule.Clear();
     }

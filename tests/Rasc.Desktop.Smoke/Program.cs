@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using Rasc.Core;
 using System.Windows.Threading;
 using Rasc.Desktop;
 
@@ -18,9 +19,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two");
             return 2;
         }
         var scenario = args[0];
@@ -50,6 +51,8 @@ internal static class Program
                 ?? throw new InvalidOperationException("Missing wave fixture button.");
             var progress = (Button?)window.FindName("PreviewProgressButton")
                 ?? throw new InvalidOperationException("Missing progress fixture button.");
+            var waveCount = (ComboBox?)window.FindName("PreviewWaveCountBox")
+                ?? throw new InvalidOperationException("Missing wave count selector.");
 
             void Select(string name)
             {
@@ -65,8 +68,35 @@ internal static class Program
 
             int Count(string name) => app.Windows.Cast<Window>()
                 .Count(w => w.IsVisible && w.GetType().Name == name);
-            int modernCount() => Count("ModernToastWindow");
+            int modernWindowCount() => Count("ModernToastWindow");
+            // C03-C03 deliberately uses ONE HWND for N Modern cards. Tag
+            // exposes presentation-only child count to the smoke harness.
+            int modernCount() => app.Windows.Cast<Window>()
+                .Where(w => w.IsVisible && w.GetType().Name == "ModernToastWindow")
+                .Sum(w => w.Tag is int count ? count : 0);
             int classicCount() => Count("ClassicToastStackWindow");
+
+            void VerifyOneSeamlessSurface(int count)
+            {
+                if (modernWindowCount() != 1 || modernCount() != count)
+                    throw new InvalidOperationException(
+                        $"Expected one Modern HWND with {count} cards.");
+                var host = app.Windows.Cast<Window>()
+                    .Single(w => w.IsVisible && w.GetType().Name == "ModernToastWindow");
+                if (host.Content is not Canvas canvas || canvas.Children.Count != count)
+                    throw new InvalidOperationException("Modern cards are not on one canvas.");
+                var top = canvas.Children.Cast<UIElement>()
+                    .Select(Canvas.GetTop).OrderBy(y => y).ToArray();
+                for (var i = 0; i < count; i++)
+                {
+                    var expected = ModernStackGeometry.ViewportHeight -
+                        count * ModernToastScheduler.CardHeight +
+                        i * ModernToastScheduler.CardHeight;
+                    if (Math.Abs(top[i] - expected) > 0.0001)
+                        throw new InvalidOperationException(
+                            $"Seam in Modern canvas at card {i}: {top[i]} != {expected}");
+                }
+            }
 
             var clock = Stopwatch.StartNew();
             var stage = 0;
@@ -113,17 +143,23 @@ internal static class Program
                             app.Shutdown();
                         }
                     }
-                    else if (scenario == "modern-progress")
+                    else if (scenario is "modern-progress" or "modern-stack-two")
                     {
                         if (stage == 0)
                         {
                             Select("Modern");
-                            Click(progress);
+                            if (scenario == "modern-stack-two")
+                            {
+                                waveCount.SelectedItem = waveCount.Items.OfType<ComboBoxItem>()
+                                    .Single(item => (string?)item.Tag == "2");
+                                Click(wave);
+                            }
+                            else Click(progress);
                             stage++;
                         }
                         else if (stage == 1 && elapsed > 850)
                         {
-                            if (modernCount() != 1) { Fail("Progress icon window did not appear."); return; }
+                            VerifyOneSeamlessSurface(scenario == "modern-stack-two" ? 2 : 1);
                             modernObserved = true;
                             stage++;
                         }
@@ -144,11 +180,7 @@ internal static class Program
                         }
                         else if (stage == 1 && elapsed > 500)
                         {
-                            if (modernCount() != 3)
-                            {
-                                Fail("Modern wave of three did not appear.");
-                                return;
-                            }
+                            VerifyOneSeamlessSurface(3);
                             modernObserved = true;
                             Select("Classic");
                             Click(preview);
@@ -156,7 +188,8 @@ internal static class Program
                         }
                         else if (stage == 2 && elapsed > 1100)
                         {
-                            if (modernCount() != 3 || classicCount() != 0)
+                            if (modernCount() != 3 || modernWindowCount() != 1 ||
+                                classicCount() != 0)
                             {
                                 Fail("Mixed Modern/Classic windows overlapped.");
                                 return;
@@ -197,8 +230,10 @@ internal static class Program
             // An idle Modern->Classic switch MUST NOT create any Modern
             // HWND. Require Modern observation only for scenarios that
             // actually request a Modern presentation.
-            bool requireClassic = scenario != "modern-progress";
-            bool requireModern = scenario is "modern-classic" or "modern-progress";
+            bool requireClassic =
+                scenario is not ("modern-progress" or "modern-stack-two");
+            bool requireModern =
+                scenario is "modern-classic" or "modern-progress" or "modern-stack-two";
             if ((requireClassic && !classicObserved) ||
                 (requireModern && !modernObserved))
             {
