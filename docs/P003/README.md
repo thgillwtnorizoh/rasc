@@ -93,3 +93,16 @@ The new architecture places all Modern cards in ONE nonactivating topmost window
 [Draft PR #19](https://github.com/thgillwtnorizoh/rasc/pull/19) passed [Windows CI 44224357909](https://github.com/thgillwtnorizoh/rasc/actions/runs/44224357909) at exact tested source e89e4209a94b3b393df06be59e71b3a8057f9180: 148/148 core tests, five real WPF smoke scenarios, zero WPF compiler warnings/errors, win-x64 self-contained artifact 14391788398. [C03-C03 checkpoint](checkpoints/P003-C03-C03.md); [Work 1 independent QA #20](https://github.com/thgillwtnorizoh/rasc/issues/20).
 
 **Important:** the rare gold animation itself is NOT finished; Valve's original PNG masks, blend mode and actual desktop-toast visual appearance remain unverified. Work 1 independent QA and owner Windows screenshot qualification are not yet complete. P003 OPEN.
+
+
+## C03-C04 — Continuous Modern card background and CodePen gold target
+
+The owner-approved gold reference is Dataminer's [Steam Achievement Animated Glow CodePen](https://codepen.io/Dataminer/pen/pooWzpo), **Steam Colors / LegendaryAchievement**. C04 uses its 48px icon, three 10px nested expansions, **radial** gold stops at 0/6/10/26/35/40/60/82/100%, 18s reverse star mask, 6s forward light, and two near/far gold shadows. Earlier code used a conic gradient from a *different* Steam Community CSS reference. The actual CodePen PNG mask images have not been redistributed; exact pixel parity is not claimed.
+
+The remaining two horizontal bands in the owner screenshot were traced to continued **per-card background and watermark painting** despite C03-C03's single HWND. C04 moves both into one continuously painted/trimmed wave decoration surface. Independent UserControl card backgrounds are transparent. All original preview, profile handoff and Classic art remain intact.
+
+[Work 2 issue #21](https://github.com/thgillwtnorizoh/rasc/issues/21), [draft PR #22](https://github.com/thgillwtnorizoh/rasc/pull/22), [engineering checkpoint](checkpoints/P003-C03-C04.md), [owner screenshot/source report](../../research/P000/modern/owner-c03-c04-stack-and-glow.md), [Work 1 independent QA issue #23](https://github.com/thgillwtnorizoh/rasc/issues/23).
+
+Exact-source [Windows CI 44230546521](https://github.com/thgillwtnorizoh/rasc/actions/runs/44230546521) at 1423c7f5142f738d22a4a4f5305f3e156e7c4151: 162/162 .NET tests, 5/5 WPF HWND smoke scenarios with bitmap comparisons at 100/125/150%, zero WPF build warnings/errors, self-contained x64 artifact 14394952402. The failed first test run 44230291652 is recorded, not erased; it was caused by an invalid test expectation during the below-screen entrance phase.
+
+**P003 OPEN:** owner must test actual 1/2/3-card seams and match rare gold to reference; real Valve mask/image usage, mixed-monitor gaming and independent QA NOT VERIFIED.
