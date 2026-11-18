@@ -393,6 +393,18 @@ internal static class Program
                 if (spilledRays != 0)
                     throw new InvalidOperationException(
                         $"WPF root mask leaked {spilledRays} bright rays into text.");
+                // The exact square-mask edge is ~transparent (x0,y32
+                // alpha=1/255). At the left boundary only the far, faint
+                // CSS shadow should remain, never a fully bright radial ray.
+                // Unlike merely checking mask brush type, this fails on the
+                // previous C06 relative-mask raster.
+                foreach (var x in new[] { 0, 67 })
+                {
+                    var p = (35 * 283 + x) * 4;
+                    if (bytes[p + 2] - bytes[p] > 20)
+                        throw new InvalidOperationException(
+                            $"Gold ray overbrights low-alpha square mask edge x={x}.");
+                }
                 if (glowing < 16)
                     throw new InvalidOperationException(
                         $"Rare gold is not visible outside the icon ({glowing} luminous pixels).");

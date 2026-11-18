@@ -10,3 +10,9 @@ Fix candidate: explicitly map 64x64 source PNG pixels to absolute 68x68 and 88x8
 CI history: 44305139439 FAILED browser screenshot step (162/162 core + six real WPF passed); 44305657001 FAILED browser screenshot step (same WPF passes), because direct PowerShell Chrome GUI launch returned before screenshot creation. Diagnostic fix now uses Start-Process -Wait -PassThru; source mask PNGs preserved in second failed run artifact.
 
 **Gates:** exact SHA, Windows WPF build, 162 core regression, six WPF scenarios, browser render, DPI 100/125/150%, seamless one/two/three, x64 publish, separate Work 1 independent QA, owner Windows comparison NOT VERIFIED until tested. Asset rights UNRESOLVED. No main merge or public release. P003 OPEN.
+
+## Exact first verified C07 candidate and browser caveat
+
+Windows CI [44306680450](https://github.com/thgillwtnorizoh/rasc/actions/runs/44306680450) at **f882870c0b569c0e0a87ecd899605b7d86f42fa2**: **162/162 core pass, 6/6 native WPF smoke pass, zero WPF build errors, self-contained x64 publication pass**. Source mask-box mapping reduced 900ms outside-icon bright warm pixels (R>160 and R>B+10) from 836 in prior C06 screenshot to 103; pixel x0,y35 RGB changed from (136,107,58) to (37,38,36). This supports a **VERIFIED COMPONENT** raster fix, NOT the entire modern halo's equivalence. Diff screenshot: 283x70 C06/C07 frames in GitHub Actions artifacts.
+
+Chrome 900ms and 2000ms screenshots produced **identical pixels** at this first CI attempt, so the supposed phase-matched browser render is **NOT VERIFIED** as a discriminating animated reference. A new browser diagnostic captures source CSS with masked glow hidden and with masks removed to test image loading and masking. Do not use zero browser change as evidence of animation parity. DPI-specific 125/150% and owner Windows comparison remain NOT RUN.

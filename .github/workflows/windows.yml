@@ -63,12 +63,42 @@ jobs:
             $arguments = @('--headless=new', '--no-first-run', '--no-default-browser-check',
               '--disable-extensions', "--user-data-dir=$profile", '--hide-scrollbars',
               '--force-device-scale-factor=1', '--window-size=440,240',
+              '--virtual-time-budget=500',
               "--screenshot=$imagePath", $referenceUrl)
             $process = Start-Process -FilePath $chrome -ArgumentList $arguments -Wait -PassThru
             Write-Output "Chrome phase=$ms exit=$($process.ExitCode) outputExists=$(Test-Path $imagePath) uri=$referenceUrl"
             if ($process.ExitCode -ne 0 -or -not (Test-Path $imagePath)) {
               throw "Chrome reference screenshot failed at $ms ms"
             }
+          }
+          # Controls establish whether the local PNG masks actually load.
+          # A screenshot of CSS shadows alone is NOT a valid animation reference.
+          $controls = @(
+            @{ Name='no-glow'; Css='.AchievementIconGlowContainerRoot {display:none !important;}' },
+            @{ Name='no-masks'; Css='.AchievementIconGlowContainerRoot, .AchievementIconGlowContainer {-webkit-mask-image:none !important;mask-image:none !important;}' }
+          )
+          foreach ($control in $controls) {
+            $html = $fixture.Replace('</style>', "$($control.Css)`n</style>")
+            $referencePath = Join-Path $env:GITHUB_WORKSPACE "tests/reference/legendary-$($control.Name).html"
+            [System.IO.File]::WriteAllText($referencePath, $html)
+            $referenceUrl = ([System.Uri]::new($referencePath)).AbsoluteUri
+            $imagePath = Join-Path $out "chromium-legendary-$($control.Name).png"
+            $profile = Join-Path $env:RUNNER_TEMP "rasc-chrome-$($control.Name)"
+            $arguments = @('--headless=new', '--no-first-run', '--no-default-browser-check',
+              '--disable-extensions', "--user-data-dir=$profile", '--hide-scrollbars',
+              '--force-device-scale-factor=1', '--window-size=440,240',
+              '--virtual-time-budget=500', "--screenshot=$imagePath", $referenceUrl)
+            $process = Start-Process -FilePath $chrome -ArgumentList $arguments -Wait -PassThru
+            if ($process.ExitCode -ne 0 -or -not (Test-Path $imagePath)) {
+              throw "Chrome source-control screenshot failed: $($control.Name)"
+            }
+          }
+          $first = (Get-FileHash (Join-Path $out 'chromium-legendary-900.png')).Hash
+          $second = (Get-FileHash (Join-Path $out 'chromium-legendary-2000.png')).Hash
+          $hidden = (Get-FileHash (Join-Path $out 'chromium-legendary-no-glow.png')).Hash
+          Write-Output "BROWSER VALIDITY: phase-frames-differ=$($first -ne $second); glow-differs-from-shadow-only=$($first -ne $hidden)"
+          if ($first -eq $second -or $first -eq $hidden) {
+            Write-Warning "Chrome raster does not discriminate the masked animation: do not claim phase-matched visual fidelity."
           }
       - name: Upload WPF rare-glow frame evidence
         if: always()
