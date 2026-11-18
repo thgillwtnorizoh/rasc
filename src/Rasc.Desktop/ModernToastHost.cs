@@ -25,6 +25,8 @@ internal sealed class ModernToastHost : IDisposable
     private readonly DispatcherTimer _anchorWake;
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private TimeSpan? _lastRenderTime;
+    private PopupFontChoice _fontChoice = PopupFontChoice.Original;
+    private Action? _playCue;
     private int _fpsCap;
     private int _sizePercent;
     private bool _renderSubscribed;
@@ -61,6 +63,14 @@ internal sealed class ModernToastHost : IDisposable
         _sizePercent = valid.PopupSizePercent;
         _frameGate.Reset();
         if (!_batchWake.IsEnabled) Tick(); // only relayout, never restart a wave
+    }
+
+    internal void ConfigureCustomization(PopupFontChoice fontChoice, Action? playCue)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _fontChoice = fontChoice;
+        _playCue = playCue;
+        if (!_batchWake.IsEnabled) Tick(); // restyle existing text; no new event
     }
 
     internal void Enqueue(UnlockEvent evt) =>
@@ -231,11 +241,16 @@ internal sealed class ModernToastHost : IDisposable
         {
             var newlyCreated = _window is null;
             _window ??= new ModernToastWindow();
-            var retired = _window.Apply(frames, _content, scale, work, fullscreen);
+            var retired = _window.Apply(frames, _content, scale, _fontChoice, work, fullscreen);
             foreach (var id in retired)
                 _content.Remove(id);
             if (newlyCreated)
+            {
                 _window.Show();
+                // One cue per admitted wave, never one per rendered frame
+                // and never while cross-profile admission is still queued.
+                _playCue?.Invoke();
+            }
         }
 
         if (_schedule.IsIdle)

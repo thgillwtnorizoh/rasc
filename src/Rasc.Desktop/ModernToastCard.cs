@@ -17,7 +17,7 @@ internal sealed class ModernToastCard : UserControl
 {
     private readonly Canvas _surface;
 
-    internal ModernToastCard(ModernToastContent content)
+    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice)
     {
         Width = ModernToastScheduler.CardWidth;
         Height = ModernToastScheduler.CardHeight;
@@ -116,6 +116,16 @@ internal sealed class ModernToastCard : UserControl
         }
 
         Content = _surface;
+        ApplyFontChoice(fontChoice);
+    }
+
+    internal void ApplyFontChoice(PopupFontChoice fontChoice)
+    {
+        // Only actual popup text: the placeholder icon is nested in its
+        // Border and must retain the accepted visual size and face.
+        var family = PopupFontResolver.Resolve(fontChoice, classic: false);
+        foreach (var text in _surface.Children.OfType<TextBlock>())
+            text.FontFamily = family;
     }
 
     internal static Brush CreateBackdropGradient()

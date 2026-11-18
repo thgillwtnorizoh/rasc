@@ -22,6 +22,8 @@ internal sealed class ClassicToastHost : IDisposable
     private readonly DispatcherTimer _holdWake;
     private readonly DispatcherTimer _anchorWake;
     private readonly ClassicAnimationFrameGate _frameGate = new();
+    private PopupFontChoice _fontChoice = PopupFontChoice.Original;
+    private Action? _playCue;
     private int _fpsCap;
     private int _popupSizePercent;
     private long _appliedAnimationUpdates;
@@ -64,6 +66,14 @@ internal sealed class ClassicToastHost : IDisposable
         _frameGate.Reset();
         _window?.SetPopupSizePercent(_popupSizePercent);
         Tick(); // Immediately relayout any visible stack, no new unlock is generated.
+    }
+
+    internal void ConfigureCustomization(PopupFontChoice fontChoice, Action? playCue)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _fontChoice = fontChoice;
+        _playCue = playCue;
+        foreach (var card in _cards.Values) card.ApplyFontChoice(fontChoice);
     }
 
     internal void Enqueue(UnlockEvent evt) =>
@@ -223,7 +233,11 @@ internal sealed class ClassicToastHost : IDisposable
                 {
                     var content = _text[frame.Event.EventId];
                     card = new ClassicToastCard(content.Title, content.Description);
+                    card.ApplyFontChoice(_fontChoice);
                     _cards.Add(frame.Event.EventId, card);
+                    // Playback begins with the actual visual entrance,
+                    // not while a toast is queued or on every animation frame.
+                    if (frame.Stage == ClassicToastStage.Entering) _playCue?.Invoke();
                 }
                 _window.Apply(card, frame);
             }
