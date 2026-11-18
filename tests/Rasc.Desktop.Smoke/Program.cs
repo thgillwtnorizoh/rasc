@@ -426,6 +426,35 @@ internal static class Program
                 encoder.Save(file);
             }
 
+            // Render-target output scaling, NOT physical monitor DPI qualification.
+            void SaveRareFrameAtRasterDpi(int dpi)
+            {
+                var directory = Environment.GetEnvironmentVariable("RASC_SMOKE_FRAME_DIR");
+                if (string.IsNullOrWhiteSpace(directory)) return;
+                var host = app.Windows.Cast<Window>()
+                    .Single(w => w.IsVisible && w.GetType().Name == "ModernToastWindow");
+                if (host.Content is not Canvas viewport)
+                    throw new InvalidOperationException("Missing Modern WPF viewport.");
+                viewport.UpdateLayout();
+                var scale = dpi / 96.0;
+                var width = (int)Math.Ceiling(283 * scale);
+                var height = (int)Math.Ceiling(ModernStackGeometry.ViewportHeight * scale);
+                var bitmap = new RenderTargetBitmap(width, height, dpi, dpi, PixelFormats.Pbgra32);
+                bitmap.Render(viewport);
+                var top = (int)Math.Round(140 * scale);
+                var cardHeight = (int)Math.Ceiling(70 * scale);
+                if (top + cardHeight > height)
+                    throw new InvalidOperationException($"DPI crop exceeds viewport at {dpi}dpi.");
+                var crop = new CroppedBitmap(bitmap, new Int32Rect(0, top, width, cardHeight));
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(crop));
+                Directory.CreateDirectory(directory);
+                using var stream = File.Create(Path.Combine(directory,
+                    $"c07-rare-frame-raster-{dpi}dpi.png"));
+                encoder.Save(stream);
+                Console.WriteLine($"RARE RASTER DPI: {dpi}dpi {width}x{cardHeight}");
+            }
+
             var clock = Stopwatch.StartNew();
             var stage = 0;
             byte[]? rareFirstFrame = null;
@@ -489,6 +518,8 @@ internal static class Program
                             }
                             rareFirstFrame = SnapshotRareCard();
                             SaveRareFrame(rareFirstFrame, "c06-rare-frame-0900ms.png");
+                            SaveRareFrameAtRasterDpi(120);
+                            SaveRareFrameAtRasterDpi(144);
                             modernObserved = true;
                             stage++;
                         }
