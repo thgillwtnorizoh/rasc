@@ -82,3 +82,14 @@ Changing Classic/Modern affects **new** notifications; a currently showing old-s
 The progress medal uses an offline WPF reconstruction of the Steam UI's Achievement 36x36 SVG icon; progress fraction is minimum-relative. Rare light uses source-inspired masks/6s/18s animation but not the original proprietary PNGs or overlay compositor.
 
 [Exact-source Windows CI 44137221353](https://github.com/thgillwtnorizoh/rasc/actions/runs/44137221353): 138/138 core PASS, 4/4 WPF HWND smoke PASS, WPF Release 0 warnings/errors, self-contained x64 artifact 14352028743 PASS at source SHA 50fdf70fa7851ce07cf49b760d5b7c9ce940d44d. [Independent QA #17](https://github.com/thgillwtnorizoh/rasc/issues/17) and owner real Windows validation remain NOT RUN.
+
+
+## C03-C03 — One composited Modern stack, no inter-card native HWND seams
+
+The owner supplied a two-card screenshot with a two-pixel horizontal gray strip at the card boundary, and reported a corresponding defect between lower cards in 3-card stacks. The previous scheduler already had exact contiguous 70-unit slots; the Modern host nonetheless created one transparent topmost WPF HWND per card, allowing compositor seams. [Visual evidence](../../research/P000/modern/owner-c03-c03-seam-report.md) / [issue #18](https://github.com/thgillwtnorizoh/rasc/issues/18).
+
+The new architecture places all Modern cards in ONE nonactivating topmost window with a 283×210 design-unit viewport. Empty slots are fully transparent. Cards preserve their original backgrounds, watermark, rare and progress variants; all share the same bottom starting point, 70-unit adjacent settled positions and unchanged Modern scheduling. The accepted Classic renderer and the fullscreen-only anchor are unchanged.
+
+[Draft PR #19](https://github.com/thgillwtnorizoh/rasc/pull/19) passed [Windows CI 44224357909](https://github.com/thgillwtnorizoh/rasc/actions/runs/44224357909) at exact tested source e89e4209a94b3b393df06be59e71b3a8057f9180: 148/148 core tests, five real WPF smoke scenarios, zero WPF compiler warnings/errors, win-x64 self-contained artifact 14391788398. [C03-C03 checkpoint](checkpoints/P003-C03-C03.md); [Work 1 independent QA #20](https://github.com/thgillwtnorizoh/rasc/issues/20).
+
+**Important:** the rare gold animation itself is NOT finished; Valve's original PNG masks, blend mode and actual desktop-toast visual appearance remain unverified. Work 1 independent QA and owner Windows screenshot qualification are not yet complete. P003 OPEN.
