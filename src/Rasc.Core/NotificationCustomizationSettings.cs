@@ -13,7 +13,7 @@ public enum NotificationSoundChoice { DesktopDefault, BigPicture, Custom, Off }
 
 // A separate debug dimension from font family. Existing owner-accepted
 // Modern card typography remains default and must survive upgrades.
-public enum ModernTypographyProfile { RascAccepted, SteamCssDesktop, SteamCssBasicUi }
+public enum ModernTypographyProfile { RascAccepted, SteamCssDesktop, SteamCssBasicUi, OwnerObservedMixed }
 
 public sealed record NotificationCustomizationSettings(
     PopupFontChoice Font = PopupFontChoice.Original,

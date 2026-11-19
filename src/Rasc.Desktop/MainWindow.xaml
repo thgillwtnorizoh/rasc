@@ -117,12 +117,13 @@
       </WrapPanel>
       <WrapPanel Margin="0,9,0,0" Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock Text="Modern text metrics" Margin="0,0,8,0" VerticalAlignment="Center"/>
-        <ComboBox x:Name="ModernTypographyBox" Width="230"
+        <ComboBox x:Name="ModernTypographyBox" Width="365"
                   SelectionChanged="ModernTypographyBox_SelectionChanged"
                   ToolTip="Independent of font family. Steam CSS profiles are source-derived measurements for name/description only; accepted RASC layout and glyphs remain fixed.">
           <ComboBoxItem Content="RASC approved (unchanged)" Tag="RascAccepted"/>
           <ComboBoxItem Content="Steam CSS · standard (400/300)" Tag="SteamCssDesktop"/>
           <ComboBoxItem Content="Steam CSS · BasicUI (500/400)" Tag="SteamCssBasicUi"/>
+          <ComboBoxItem Content="Owner test · Motiva Bold name + Windows sans body" Tag="OwnerObservedMixed"/>
         </ComboBox>
         <TextBlock Text="Compare with Popup font above; no fonts are bundled."
                    Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center"/>

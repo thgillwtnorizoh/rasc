@@ -359,10 +359,17 @@ public partial class MainWindow : Window
         if (!Enum.TryParse<ModernTypographyProfile>(tag, out var choice) ||
             !Enum.IsDefined(choice)) return;
         UpdateCustomization(_customization with { ModernTypography = choice });
-        StatusText.Text = choice == ModernTypographyProfile.RascAccepted
-            ? "Restored accepted RASC Modern typography."
-            : "Modern source CSS typography selected (" + choice
-                + "). Compare with Motiva Sans and sans-serif; original runtime parity not established.";
+        StatusText.Text = choice switch
+        {
+            ModernTypographyProfile.RascAccepted =>
+                "Restored accepted RASC Modern typography.",
+            ModernTypographyProfile.OwnerObservedMixed =>
+                PopupFontResolver.IsInstalled(PopupFontChoice.MotivaSans)
+                ? "Experimental mixed face: Motiva Sans Bold name and Windows UI font description. Not original-verified."
+                : "Motiva Sans is NOT installed: mixed face would fall back. Comparison is invalid.",
+            _ => "Modern source CSS typography selected (" + choice
+                + "). Compare Motiva Sans versus Windows sans-serif; Steam runtime parity unverified."
+        };
     }
 
     private void SoundChoiceBox_SelectionChanged(object sender,
