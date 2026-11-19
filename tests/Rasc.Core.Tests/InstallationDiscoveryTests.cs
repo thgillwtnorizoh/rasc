@@ -47,8 +47,8 @@ public sealed class InstallationDiscoveryTests
     public void SteamPrefersProgramFilesX86ThenProgramFilesThenOtherRegardlessOfEnumerationOrder()
     {
         using var t = new Sandbox();
-        var x86 = t.NewSteam("x86/Steam");
-        var x64 = t.NewSteam("x64/Steam");
+        var x86 = t.NewSteam(Path.Combine("x86", "Steam"));
+        var x64 = t.NewSteam(Path.Combine("x64", "Steam"));
         var elsewhere = t.NewSteam("elsewhere");
         var found = InstallationDiscovery.FindSteam(
             Path.Combine(t.Root, "x86"), Path.Combine(t.Root, "x64"), [elsewhere, x64]);
@@ -66,7 +66,7 @@ public sealed class InstallationDiscoveryTests
     public void MissingFilesInSelectedSteamDoNotSilentlyFallbackToAnotherInstall()
     {
         using var t = new Sandbox();
-        var preferred = t.NewSteam("x86/Steam", desktop: false);
+        var preferred = t.NewSteam(Path.Combine("x86", "Steam"), desktop: false);
         var other = t.NewSteam("other");
         var found = InstallationDiscovery.FindSteam(
             Path.Combine(t.Root, "x86"), null, [other]);
