@@ -156,6 +156,42 @@ public sealed class NotificationCustomizationTests
     }
 
     [Fact]
+    public void ReadsSelectedSteamWavWithoutCopyingOrAssumingHistoricalSha()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "rasc-steam-wav-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var steam = Path.Combine(root, "Steam");
+            var sounds = Path.Combine(steam, "steamui", "sounds");
+            Directory.CreateDirectory(sounds);
+            var original = Path.Combine(sounds, NotificationSoundFiles.DesktopFile);
+            var bytes = new byte[44];
+            System.Text.Encoding.ASCII.GetBytes("RIFF").CopyTo(bytes, 0);
+            System.Text.Encoding.ASCII.GetBytes("WAVE").CopyTo(bytes, 8);
+            File.WriteAllBytes(original, bytes);
+            Assert.True(NotificationSoundFiles.IsValidSteamWav(original));
+            Assert.False(NotificationSoundFiles.IsApprovedPresetFile(
+                original, NotificationSoundChoice.DesktopDefault));
+            var config = new NotificationCustomizationSettings(
+                Sound: NotificationSoundChoice.DesktopDefault);
+            var found = NotificationSoundFiles.Resolve(
+                config, Path.Combine(root, "local"), Path.Combine(root, "app"), steam);
+            Assert.Equal(original, found);
+            Assert.False(Directory.Exists(Path.Combine(root, "local")));
+            bytes[8] = (byte)'X';
+            File.WriteAllBytes(original, bytes);
+            Assert.False(NotificationSoundFiles.IsValidSteamWav(original));
+            Assert.Null(NotificationSoundFiles.Resolve(
+                config, Path.Combine(root, "local"), Path.Combine(root, "app"), steam));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void SoundReferencesMatchTwoOwnerUploadedWavHashes()
     {
         Assert.Equal(

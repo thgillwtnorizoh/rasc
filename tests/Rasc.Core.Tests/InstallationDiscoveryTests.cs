@@ -115,6 +115,39 @@ public sealed class InstallationDiscoveryTests
     }
 
     [Fact]
+    public void ManualInstallationPreferencesPersistWithNoHistoryModification()
+    {
+        using var t = new Sandbox();
+        Directory.CreateDirectory(t.Root);
+        var file = Path.Combine(t.Root, "installation-locations.json");
+        var store = new InstallationLocationStore(file);
+        Assert.Equal(new InstallationLocations(), store.Load());
+        var chosen = new InstallationLocations(
+            Path.Combine(t.Root, "steam-manual"),
+            Path.Combine(t.Root, "csgo-manual"));
+        Assert.True(store.TrySave(chosen));
+        Assert.Equal(chosen, new InstallationLocationStore(file).Load());
+        Assert.False(File.Exists(Path.Combine(t.Root, "history.db")));
+        Assert.False(File.Exists(Path.Combine(t.Root, "achievements.txt")));
+        File.WriteAllText(file, "{ corrupt");
+        Assert.Equal(new InstallationLocations(), store.Load());
+    }
+
+    [Fact]
+    public void AbsentLauncherOrGcFolderCannotBeUsedAsMonitorSource()
+    {
+        using var t = new Sandbox();
+        var noGc = t.NewGame("game-no-gc", gc: false);
+        var noLauncher = t.NewGame("game-no-exe", exe: false);
+        Assert.Null(InstallationDiscovery.ExamineGc(noGc).AchievementsPath);
+        Assert.Null(InstallationDiscovery.ExamineGc(noLauncher).AchievementsPath);
+        Assert.Equal(GcInstallState.MissingLauncher,
+            InstallationDiscovery.ExamineGc(noGc).State);
+        Assert.Equal(GcInstallState.MissingLauncher,
+            InstallationDiscovery.ExamineGc(noLauncher).State);
+    }
+
+    [Fact]
     public void ManualGcNeverSilentlyUsesOtherGameAndValidatesAchievementsPath()
     {
         using var t = new Sandbox();
