@@ -62,7 +62,8 @@ public partial class MainWindow : Window
         _classicToasts.SetSettings(_presentationSettings);
         _modernToasts.SetSettings(_presentationSettings);
         _classicToasts.ConfigureCustomization(_customization.Font, PlayNotificationCue);
-        _modernToasts.ConfigureCustomization(_customization.Font, PlayNotificationCue);
+        _modernToasts.ConfigureCustomization(
+            _customization.Font, _customization.ModernTypography, PlayNotificationCue);
         _profileStore = new NotificationProfileStore(
             Path.Combine(_localDirectory, "notification-profile.txt"));
         _profile = _profileStore.Load();
@@ -79,6 +80,7 @@ public partial class MainWindow : Window
         SelectAppearancePreference(PopupSizeBox, _presentationSettings.PopupSizePercent);
         _presentationControlsReady = true;
         SelectNamedChoice(FontChoiceBox, _customization.Font.ToString());
+        SelectNamedChoice(ModernTypographyBox, _customization.ModernTypography.ToString());
         SelectNamedChoice(SoundChoiceBox, _customization.Sound.ToString());
         _customizationControlsReady = true;
         UpdateSoundAvailability();
@@ -348,6 +350,21 @@ public partial class MainWindow : Window
               + " (a fallback will render; not a valid typography comparison).";
     }
 
+    private void ModernTypographyBox_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_customizationControlsReady) return;
+        var tag = (ModernTypographyBox.SelectedItem as System.Windows.Controls.ComboBoxItem)
+            ?.Tag?.ToString();
+        if (!Enum.TryParse<ModernTypographyProfile>(tag, out var choice) ||
+            !Enum.IsDefined(choice)) return;
+        UpdateCustomization(_customization with { ModernTypography = choice });
+        StatusText.Text = choice == ModernTypographyProfile.RascAccepted
+            ? "Restored accepted RASC Modern typography."
+            : "Modern source CSS typography selected (" + choice
+                + "). Compare with Motiva Sans and sans-serif; original runtime parity not established.";
+    }
+
     private void SoundChoiceBox_SelectionChanged(object sender,
         System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -364,7 +381,8 @@ public partial class MainWindow : Window
         if (valid == _customization) return;
         _customization = valid;
         _classicToasts.ConfigureCustomization(valid.Font, PlayNotificationCue);
-        _modernToasts.ConfigureCustomization(valid.Font, PlayNotificationCue);
+        _modernToasts.ConfigureCustomization(
+            valid.Font, valid.ModernTypography, PlayNotificationCue);
         if (!_customizationStore.TrySave(valid))
             StatusText.Text = "Popup customizations changed for this session but could not be saved.";
         UpdateSoundAvailability();

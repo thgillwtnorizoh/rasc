@@ -1,8 +1,8 @@
 <Window x:Class="Rasc.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="RASC — CS Virtual Achievements" Width="820" Height="660"
-        MinWidth="610" MinHeight="520" WindowStartupLocation="CenterScreen">
+        Title="RASC — CS Virtual Achievements" Width="820" Height="704"
+        MinWidth="610" MinHeight="540" WindowStartupLocation="CenterScreen">
   <Grid Margin="22">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
@@ -116,6 +116,18 @@
         </ComboBox>
       </WrapPanel>
       <WrapPanel Margin="0,9,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBlock Text="Modern text metrics" Margin="0,0,8,0" VerticalAlignment="Center"/>
+        <ComboBox x:Name="ModernTypographyBox" Width="230"
+                  SelectionChanged="ModernTypographyBox_SelectionChanged"
+                  ToolTip="Independent of font family. Steam CSS profiles are source-derived measurements for name/description only; accepted RASC layout and glyphs remain fixed.">
+          <ComboBoxItem Content="RASC approved (unchanged)" Tag="RascAccepted"/>
+          <ComboBoxItem Content="Steam CSS · standard (400/300)" Tag="SteamCssDesktop"/>
+          <ComboBoxItem Content="Steam CSS · BasicUI (500/400)" Tag="SteamCssBasicUi"/>
+        </ComboBox>
+        <TextBlock Text="Compare with Popup font above; no fonts are bundled."
+                   Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      </WrapPanel>
+      <WrapPanel Margin="0,9,0,0" Orientation="Horizontal" VerticalAlignment="Center">
         <Button Content="Import Steam WAV..." Padding="12,5" Click="ImportPresetSound_Click"
                 ToolTip="Import one of the owner-supplied original SHA-256-checked preset WAV files into RASC local AppData, without modifying Steam."/>
         <Button Content="Choose custom audio..." Padding="12,5" Margin="10,0,0,0"
@@ -146,7 +158,7 @@
       <TextBlock x:Name="StatusText" FontWeight="SemiBold" Text="Idle — choose the GC file to begin."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
-                 Text="Existing achievements baseline silently. Font selection applies to both popup profiles; sound is played when a notification actually enters, not during queued waits. Steam sound WAV presets are local imports, not part of the public build. Previews never grant awards or modify the GC file/history."/>
+                 Text="Existing achievements baseline silently. Font family can be compared against source CSS Modern name/description metrics; RASC approved text remains default. Source CSS style changes do not modify geometry, rare glow or progress icon. No Steam/GC writes. Steam WAVs remain owner-local."/>
     </StackPanel>
   </Grid>
 </Window>
