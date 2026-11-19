@@ -22,9 +22,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography");
             return 2;
         }
         var scenario = args[0];
@@ -60,6 +60,8 @@ internal static class Program
                 ?? throw new InvalidOperationException("Missing wave count selector.");
             var fontBox = (ComboBox?)window.FindName("FontChoiceBox")
                 ?? throw new InvalidOperationException("Missing popup font selector.");
+            var typographyBox = (ComboBox?)window.FindName("ModernTypographyBox")
+                ?? throw new InvalidOperationException("Missing typography comparison selector.");
             var soundBox = (ComboBox?)window.FindName("SoundChoiceBox")
                 ?? throw new InvalidOperationException("Missing notification sound selector.");
 
@@ -587,6 +589,88 @@ internal static class Program
                             app.Shutdown();
                         }
                     }
+                    else if (scenario == "modern-typography")
+                    {
+                        if (stage == 0)
+                        {
+                            Select("Modern");
+                            SelectChoice(soundBox, "Off");
+                            SelectChoice(fontBox, "MotivaSans");
+                            SelectChoice(typographyBox, "RascAccepted");
+                            Click(preview);
+                            stage++;
+                        }
+                        else if (stage == 1 && elapsed > 900)
+                        {
+                            if (modernCount() != 1)
+                            {
+                                Fail("Modern source typography popup never appeared."); return;
+                            }
+                            var host = app.Windows.Cast<Window>().Single(w =>
+                                w.IsVisible && w.GetType().Name == "ModernToastWindow");
+                            var title = Descendants(host).OfType<TextBlock>()
+                                .Single(t => t.Text == "Champion");
+                            var desc = Descendants(host).OfType<TextBlock>()
+                                .Single(t => t.Text == "Win 100 games.");
+
+                            void Check(double nameSize, int nameWeight, string nameColor,
+                                double descSize, int descWeight, string descColor,
+                                double lineHeight)
+                            {
+                                if (title.FontSize != nameSize ||
+                                    title.FontWeight.ToOpenTypeWeight() != nameWeight ||
+                                    desc.FontSize != descSize ||
+                                    desc.FontWeight.ToOpenTypeWeight() != descWeight)
+                                    throw new InvalidOperationException(
+                                        $"Wrong name/description font metrics: {title.FontSize}/{title.FontWeight} " +
+                                        $"{desc.FontSize}/{desc.FontWeight}");
+                                if (title.Foreground is not SolidColorBrush titleBrush ||
+                                    desc.Foreground is not SolidColorBrush descBrush ||
+                                    titleBrush.Color.ToString() != "#FF" + nameColor.TrimStart('#') ||
+                                    descBrush.Color.ToString() != "#FF" + descColor.TrimStart('#'))
+                                    throw new InvalidOperationException("CSS typography colors were not applied.");
+                                if (double.IsNaN(lineHeight))
+                                {
+                                    if (!double.IsNaN(title.LineHeight) ||
+                                        !double.IsNaN(desc.LineHeight))
+                                        throw new InvalidOperationException("Baseline line height not restored.");
+                                }
+                                else if (title.LineHeight != lineHeight ||
+                                    desc.LineHeight != lineHeight ||
+                                    title.LineStackingStrategy != LineStackingStrategy.BlockLineHeight ||
+                                    desc.LineStackingStrategy != LineStackingStrategy.BlockLineHeight)
+                                    throw new InvalidOperationException("CSS 16px line-height not applied.");
+                            }
+
+                            Check(12, 600, "#D3D8DF", 11.5, 400, "#8C96A4", double.NaN);
+                            SelectChoice(typographyBox, "SteamCssDesktop");
+                            Check(12, 400, "#FFFFFF", 12, 300, "#8B929A", 16);
+                            if (!title.FontFamily.Source.StartsWith("Motiva Sans", StringComparison.Ordinal) ||
+                                !desc.FontFamily.Source.StartsWith("Motiva Sans", StringComparison.Ordinal))
+                                throw new InvalidOperationException("Motiva font family not retained.");
+                            SelectChoice(fontBox, "SansSerif");
+                            if (title.FontFamily.Source != SystemFonts.MessageFontFamily.Source ||
+                                desc.FontFamily.Source != SystemFonts.MessageFontFamily.Source)
+                                throw new InvalidOperationException(
+                                    "CSS metrics did not remain independent from sans-serif family.");
+                            Check(12, 400, "#FFFFFF", 12, 300, "#8B929A", 16);
+                            SelectChoice(typographyBox, "SteamCssBasicUi");
+                            Check(12, 500, "#FFFFFF", 12, 400, "#B8BCBF", 16);
+                            SelectChoice(typographyBox, "RascAccepted");
+                            Check(12, 600, "#D3D8DF", 11.5, 400, "#8C96A4", double.NaN);
+                            modernObserved = true;
+                            stage++;
+                        }
+                        else if (stage == 2 && elapsed > 6500)
+                        {
+                            if (modernCount() != 0)
+                            {
+                                Fail("Typography restyle restarted the Modern toast lifetime."); return;
+                            }
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
                     else if (scenario == "modern-rare")
                     {
                         if (stage == 0)
@@ -739,7 +823,7 @@ internal static class Program
             bool requireClassic =
                 scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare");
             bool requireModern =
-                scenario is "modern-classic" or "modern-progress" or "modern-stack-two" or "modern-rare";
+                scenario is "modern-classic" or "modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography";
             if ((requireClassic && !classicObserved) ||
                 (requireModern && !modernObserved))
             {
