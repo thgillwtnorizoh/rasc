@@ -56,6 +56,39 @@ public sealed class NotificationCustomizationTests
     }
 
     [Fact]
+    public void NewTypographyDefaultsToAcceptedRascAndCorruptChoiceIsRejected()
+    {
+        Assert.Equal(ModernTypographyChoice.RascOriginal,
+            new NotificationCustomizationSettings().ModernTypography);
+        Assert.Equal(ModernTypographyChoice.RascOriginal,
+            new NotificationCustomizationSettings(
+                ModernTypography: (ModernTypographyChoice)123).Validated().ModernTypography);
+    }
+
+    [Fact]
+    public void SteamCssTypographyRoundTripsWithoutTouchingOriginalPrefs()
+    {
+        var dir = Path.Combine(Path.GetTempPath(),
+            "rasc-css-font-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new NotificationCustomizationStore(Path.Combine(dir, "settings.json"));
+            var value = new NotificationCustomizationSettings(
+                Font: PopupFontChoice.MotivaSans,
+                ModernTypography: ModernTypographyChoice.SteamCss2026);
+            Assert.True(store.TrySave(value));
+            Assert.Equal(value, store.Load());
+            Assert.False(File.Exists(Path.Combine(dir, "appearance.json")));
+            // Older settings files omitted ModernTypography; constructor
+            // default must preserve the accepted C07 appearance.
+            File.WriteAllText(Path.Combine(dir, "settings.json"),
+                """{"Font":1,"Sound":0,"CustomPath":""}""");
+            Assert.Equal(ModernTypographyChoice.RascOriginal, store.Load().ModernTypography);
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void BadEnumValuesAndRelativePathsFailClosed()
     {
         var settings = new NotificationCustomizationSettings(
