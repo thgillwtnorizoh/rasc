@@ -185,8 +185,33 @@ public static class NotificationSoundFiles
     /// Supports either local owner-imported sounds or the optional offline
     /// sound pack placed beside Rasc.Desktop.exe. Do not auto-copy from Steam.
     /// </summary>
+    /// <summary>
+    /// Exact Steam installation WAV is preferred over private sidecars. Its
+    /// SHA can change when Steam updates or a user changes their own sound,
+    /// so validate the RIFF/WAVE header instead of comparing a historical
+    /// owner-uploaded file hash. Never copy from or write to Steam.
+    /// </summary>
+    public static bool IsValidSteamWav(string path)
+    {
+        try
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length is < 44 or > MaxCustomBytes ||
+                !file.Extension.Equals(".wav", StringComparison.OrdinalIgnoreCase))
+                return false;
+            Span<byte> header = stackalloc byte[12];
+            using var stream = file.OpenRead();
+            if (stream.Read(header) != 12) return false;
+            return header[..4].SequenceEqual("RIFF"u8) &&
+                header[8..12].SequenceEqual("WAVE"u8);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        { return false; }
+    }
+
     public static string? Resolve(NotificationCustomizationSettings settings,
-        string localRascDirectory, string applicationBaseDirectory)
+        string localRascDirectory, string applicationBaseDirectory,
+        string? selectedSteamRoot = null)
     {
         settings = settings.Validated();
         if (settings.Sound == NotificationSoundChoice.Off) return null;
@@ -195,12 +220,21 @@ public static class NotificationSoundFiles
 
         var name = ExpectedFile(settings.Sound);
         if (name is null) return null;
-        foreach (var path in new[]
+
+        if (!string.IsNullOrWhiteSpace(selectedSteamRoot))
+        {
+            var installed = Path.Combine(selectedSteamRoot, "steamui", "sounds", name);
+            if (IsValidSteamWav(installed)) return installed;
+        }
+
+        // The imported owner WAVs remain a backwards-compatible fallback
+        // if Steam is not installed or the chosen sound was removed.
+        foreach (var candidate in new[]
         {
             Path.Combine(localRascDirectory, "sounds", name),
             Path.Combine(applicationBaseDirectory, "Assets", "NotificationSounds", name)
         })
-            if (IsApprovedPresetFile(path, settings.Sound)) return path;
+            if (IsApprovedPresetFile(candidate, settings.Sound)) return candidate;
         return null;
     }
 }
