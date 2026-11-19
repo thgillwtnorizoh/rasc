@@ -145,7 +145,8 @@ internal sealed class ModernToastCard : UserControl
             // Motiva versus Windows sans-serif remains possible.
             texts[0].FontSize = 11;
             texts[0].FontWeight = FontWeights.Medium;
-            texts[0].LineHeight = 16;
+            // The title inherits line-height 14px from ShortTemplate.Header.
+            texts[0].LineHeight = 14;
             texts[0].LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
             if (texts.Length > 1)
             {
