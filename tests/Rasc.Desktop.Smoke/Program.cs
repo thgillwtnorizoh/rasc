@@ -62,6 +62,8 @@ internal static class Program
                 ?? throw new InvalidOperationException("Missing popup font selector.");
             var soundBox = (ComboBox?)window.FindName("SoundChoiceBox")
                 ?? throw new InvalidOperationException("Missing notification sound selector.");
+            var typographyBox = (ComboBox?)window.FindName("ModernTypographyBox")
+                ?? throw new InvalidOperationException("Missing Modern typography selector.");
 
             void Select(string name)
             {
@@ -544,6 +546,29 @@ internal static class Program
                                     StringComparison.Ordinal)))
                             {
                                 Fail("Modern live font update failed."); return;
+                            }
+                            // Exactly source-derived 11px/500 title + 12px/400
+                            // numeric/body. Revert during SAME visible window.
+                            SelectChoice(typographyBox, "SteamCss2026");
+                            var headline = texts.Single(t => t.Text == "Arrest Warrant");
+                            var numeric = texts.Single(t => t.Text == "(19/50)");
+                            if (headline.FontSize != 11 ||
+                                headline.FontWeight != FontWeights.Medium ||
+                                headline.LineHeight != 14 ||
+                                numeric.FontSize != 12 ||
+                                numeric.FontWeight != FontWeights.Normal ||
+                                numeric.LineHeight != 16)
+                            {
+                                Fail("Source CSS typography metrics were not applied."); return;
+                            }
+                            SelectChoice(typographyBox, "RascOriginal");
+                            if (headline.FontSize != 12 ||
+                                headline.FontWeight != FontWeights.SemiBold ||
+                                numeric.FontSize != 11 ||
+                                !double.IsNaN(headline.LineHeight) ||
+                                !double.IsNaN(numeric.LineHeight))
+                            {
+                                Fail("RASC accepted typography was not restored."); return;
                             }
                             if ((soundBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() != "Off")
                             {

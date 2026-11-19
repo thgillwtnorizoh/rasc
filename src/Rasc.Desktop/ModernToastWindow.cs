@@ -92,7 +92,8 @@ internal sealed class ModernToastWindow : Window
     /// </summary>
     internal IReadOnlyList<string> Apply(IReadOnlyList<ModernToastFrame> frames,
         IReadOnlyDictionary<string, ModernToastContent> contents,
-        double scale, PopupFontChoice fontChoice, Rect desktopWorkArea,
+        double scale, PopupFontChoice fontChoice,
+        ModernTypographyChoice typography, Rect desktopWorkArea,
         ForegroundWindowPlacement.Target? fullscreen)
     {
         if (_closed)
@@ -118,12 +119,12 @@ internal sealed class ModernToastWindow : Window
             var id = frame.Event.EventId;
             if (!_cards.TryGetValue(id, out var card))
             {
-                card = new ModernToastCard(contents[id], fontChoice);
+                card = new ModernToastCard(contents[id], fontChoice, typography);
                 _cards.Add(id, card);
                 _viewport.Children.Add(card);
             }
 
-            card.ApplyFontChoice(fontChoice);
+            card.ApplyFontChoice(fontChoice, typography);
             card.Apply(frame);
             Canvas.SetLeft(card, 0);
             Canvas.SetTop(card, ModernStackGeometry.TopInViewport(frame));

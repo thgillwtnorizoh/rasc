@@ -11,18 +11,27 @@ namespace Rasc.Core;
 public enum PopupFontChoice { Original, MotivaSans, Arial, Helvetica, SansSerif }
 public enum NotificationSoundChoice { DesktopDefault, BigPicture, Custom, Off }
 
+/// <summary>
+/// Text-only diagnostic: never silently changes the owner-accepted baseline.
+/// SteamCss2026 is a static-CSS transcription, not runtime pixel equivalence.
+/// </summary>
+public enum ModernTypographyChoice { RascOriginal, SteamCss2026 }
+
 public sealed record NotificationCustomizationSettings(
     PopupFontChoice Font = PopupFontChoice.Original,
     NotificationSoundChoice Sound = NotificationSoundChoice.DesktopDefault,
-    string CustomPath = "")
+    string CustomPath = "",
+    ModernTypographyChoice ModernTypography = ModernTypographyChoice.RascOriginal)
 {
     public NotificationCustomizationSettings Validated()
     {
         var font = Enum.IsDefined(Font) ? Font : PopupFontChoice.Original;
         var sound = Enum.IsDefined(Sound) ? Sound : NotificationSoundChoice.DesktopDefault;
+        var typography = Enum.IsDefined(ModernTypography)
+            ? ModernTypography : ModernTypographyChoice.RascOriginal;
         var path = CustomPath ?? "";
         if (!NotificationSoundFiles.IsSupportedCustomPath(path)) path = "";
-        return new(font, sound, path);
+        return new(font, sound, path, typography);
     }
 }
 
