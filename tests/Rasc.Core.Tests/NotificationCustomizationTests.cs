@@ -11,6 +11,7 @@ public sealed class NotificationCustomizationTests
         var defaults = new NotificationCustomizationSettings();
         Assert.Equal(PopupFontChoice.Original, defaults.Font);
         Assert.Equal(NotificationSoundChoice.DesktopDefault, defaults.Sound);
+        Assert.Equal(ModernTypographyProfile.RascAccepted, defaults.ModernTypography);
         Assert.Empty(defaults.CustomPath);
         Assert.Equal("desktop_toast_default.wav",
             NotificationSoundFiles.ExpectedFile(defaults.Sound));
@@ -39,6 +40,79 @@ public sealed class NotificationCustomizationTests
             PopupFontChoice.Arial, sound).Validated();
         Assert.Equal(PopupFontChoice.Arial, chosen.Font);
         Assert.Equal(sound, chosen.Sound);
+    }
+
+    [Theory]
+    [InlineData(ModernTypographyProfile.RascAccepted)]
+    [InlineData(ModernTypographyProfile.SteamCssDesktop)]
+    [InlineData(ModernTypographyProfile.SteamCssBasicUi)]
+    public void ModernTextProfilesSurviveValidationIndependentlyOfFont(ModernTypographyProfile profile)
+    {
+        var settings = new NotificationCustomizationSettings(
+            Font: PopupFontChoice.MotivaSans, ModernTypography: profile).Validated();
+        Assert.Equal(PopupFontChoice.MotivaSans, settings.Font);
+        Assert.Equal(profile, settings.ModernTypography);
+    }
+
+    [Fact]
+    public void SteamAchievementCssFontMetricsAreSourceDeclaredNotPixelFitted()
+    {
+        var standard = ModernTypographySpec.For(ModernTypographyProfile.SteamCssDesktop);
+        Assert.Equal(12, standard.NameSize);
+        Assert.Equal(400, standard.NameWeight);
+        Assert.Equal("#FFFFFF", standard.NameColor);
+        Assert.Equal(12, standard.DescriptionSize);
+        Assert.Equal(300, standard.DescriptionWeight);
+        Assert.Equal("#8B929A", standard.DescriptionColor);
+        Assert.Equal(16, standard.LineHeight);
+
+        var basic = ModernTypographySpec.For(ModernTypographyProfile.SteamCssBasicUi);
+        Assert.Equal(12, basic.NameSize);
+        Assert.Equal(500, basic.NameWeight);
+        Assert.Equal("#FFFFFF", basic.NameColor);
+        Assert.Equal(12, basic.DescriptionSize);
+        Assert.Equal(400, basic.DescriptionWeight);
+        Assert.Equal("#B8BCBF", basic.DescriptionColor);
+        Assert.Equal(16, basic.LineHeight);
+    }
+
+    [Fact]
+    public void ApprovedTypographyBaselineIsUntouchedAndInvalidModeResets()
+    {
+        var original = ModernTypographySpec.For(ModernTypographyProfile.RascAccepted);
+        Assert.Equal(12, original.NameSize);
+        Assert.Equal(600, original.NameWeight);
+        Assert.Equal("#D3D8DF", original.NameColor);
+        Assert.Equal(11.5, original.DescriptionSize);
+        Assert.Equal(400, original.DescriptionWeight);
+        Assert.Equal("#8C96A4", original.DescriptionColor);
+        Assert.True(double.IsNaN(original.LineHeight));
+        Assert.Equal(ModernTypographyProfile.RascAccepted,
+            new NotificationCustomizationSettings(ModernTypography:
+                (ModernTypographyProfile)999).Validated().ModernTypography);
+        Assert.Equal(original, ModernTypographySpec.For((ModernTypographyProfile)999));
+    }
+
+    [Fact]
+    public void LegacySoundAndFontSettingsRemainCompatibleWithNewTypographyChoice()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-typography-compat-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "notification-customization.json");
+            var store = new NotificationCustomizationStore(path);
+            File.WriteAllText(path, """{"Font":1,"Sound":3,"CustomPath":""}""");
+            var restored = store.Load();
+            Assert.Equal(PopupFontChoice.MotivaSans, restored.Font);
+            Assert.Equal(NotificationSoundChoice.Off, restored.Sound);
+            Assert.Equal(ModernTypographyProfile.RascAccepted, restored.ModernTypography);
+            var selected = restored with { ModernTypography = ModernTypographyProfile.SteamCssDesktop };
+            Assert.True(store.TrySave(selected));
+            Assert.Equal(selected, new NotificationCustomizationStore(path).Load());
+        }
+        finally { Directory.Delete(folder, true); }
     }
 
     [Fact]

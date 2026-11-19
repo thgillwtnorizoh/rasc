@@ -16,9 +16,13 @@ namespace Rasc.Desktop;
 internal sealed class ModernToastCard : UserControl
 {
     private readonly Canvas _surface;
+    private readonly TextBlock _headline;
+    private readonly TextBlock? _description;
     private PopupFontChoice? _appliedFontChoice;
+    private ModernTypographyProfile? _appliedTypography;
 
-    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice)
+    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice,
+        ModernTypographyProfile typography)
     {
         Width = ModernToastScheduler.CardWidth;
         Height = ModernToastScheduler.CardHeight;
@@ -50,6 +54,7 @@ internal sealed class ModernToastCard : UserControl
             TextWrapping = TextWrapping.NoWrap,
             IsHitTestVisible = false
         };
+        _headline = headline;
         Canvas.SetLeft(headline, 69);
         Canvas.SetTop(headline, content.Kind == ModernToastKind.Progress ? 13 : 18);
         _surface.Children.Add(headline);
@@ -111,6 +116,7 @@ internal sealed class ModernToastCard : UserControl
                 TextWrapping = TextWrapping.NoWrap,
                 IsHitTestVisible = false
             };
+            _description = description;
             Canvas.SetLeft(description, 69);
             Canvas.SetTop(description, 36);
             _surface.Children.Add(description);
@@ -118,6 +124,7 @@ internal sealed class ModernToastCard : UserControl
 
         Content = _surface;
         ApplyFontChoice(fontChoice);
+        ApplyTypographyProfile(typography);
     }
 
     internal void ApplyFontChoice(PopupFontChoice fontChoice)
@@ -131,6 +138,55 @@ internal sealed class ModernToastCard : UserControl
         var family = PopupFontResolver.Resolve(fontChoice, classic: false);
         foreach (var text in _surface.Children.OfType<TextBlock>())
             text.FontFamily = family;
+    }
+
+    /// <summary>
+    /// Controlled typography-only experiment. The caller selects the family
+    /// independently, making Motiva/Segoe at identical CSS metrics comparable.
+    /// No mask, icon, backdrop, card dimensions, text origin, or animation is
+    /// modified. The progress numeric retains the accepted RASC approximation:
+    /// its true source-specific CSS path is a different component.
+    /// </summary>
+    internal void ApplyTypographyProfile(ModernTypographyProfile mode)
+    {
+        if (_appliedTypography == mode) return;
+        _appliedTypography = mode;
+        var spec = ModernTypographySpec.For(mode);
+        _headline.FontSize = spec.NameSize;
+        _headline.FontWeight = Weight(spec.NameWeight);
+        _headline.Foreground = FrozenBrush(spec.NameColor);
+        SetLineMetrics(_headline, spec.LineHeight);
+        if (_description is not null)
+        {
+            _description.FontSize = spec.DescriptionSize;
+            _description.FontWeight = Weight(spec.DescriptionWeight);
+            _description.Foreground = FrozenBrush(spec.DescriptionColor);
+            SetLineMetrics(_description, spec.LineHeight);
+        }
+    }
+
+    private static void SetLineMetrics(TextBlock text, double lineHeight)
+    {
+        text.LineHeight = lineHeight;
+        text.LineStackingStrategy = double.IsNaN(lineHeight)
+            ? LineStackingStrategy.MaxHeight
+            : LineStackingStrategy.BlockLineHeight;
+    }
+
+    private static FontWeight Weight(int weight) => weight switch
+    {
+        300 => FontWeights.Light,
+        400 => FontWeights.Normal,
+        500 => FontWeights.Medium,
+        600 => FontWeights.SemiBold,
+        _ => FontWeights.Normal
+    };
+
+    private static SolidColorBrush FrozenBrush(string hex)
+    {
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        brush.Freeze();
+        return brush;
     }
 
     internal static Brush CreateBackdropGradient()

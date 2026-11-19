@@ -11,18 +11,25 @@ namespace Rasc.Core;
 public enum PopupFontChoice { Original, MotivaSans, Arial, Helvetica, SansSerif }
 public enum NotificationSoundChoice { DesktopDefault, BigPicture, Custom, Off }
 
+// A separate debug dimension from font family. Existing owner-accepted
+// Modern card typography remains default and must survive upgrades.
+public enum ModernTypographyProfile { RascAccepted, SteamCssDesktop, SteamCssBasicUi }
+
 public sealed record NotificationCustomizationSettings(
     PopupFontChoice Font = PopupFontChoice.Original,
     NotificationSoundChoice Sound = NotificationSoundChoice.DesktopDefault,
-    string CustomPath = "")
+    string CustomPath = "",
+    ModernTypographyProfile ModernTypography = ModernTypographyProfile.RascAccepted)
 {
     public NotificationCustomizationSettings Validated()
     {
         var font = Enum.IsDefined(Font) ? Font : PopupFontChoice.Original;
         var sound = Enum.IsDefined(Sound) ? Sound : NotificationSoundChoice.DesktopDefault;
+        var typography = Enum.IsDefined(ModernTypography)
+            ? ModernTypography : ModernTypographyProfile.RascAccepted;
         var path = CustomPath ?? "";
         if (!NotificationSoundFiles.IsSupportedCustomPath(path)) path = "";
-        return new(font, sound, path);
+        return new(font, sound, path, typography);
     }
 }
 
