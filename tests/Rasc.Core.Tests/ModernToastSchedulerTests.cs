@@ -75,6 +75,75 @@ public sealed class ModernToastSchedulerTests
     }
 
     [Fact]
+    public void QueuedReplacementWaveGetsAnotherCueWithoutEmptyFrameOrNewWindow()
+    {
+        var scheduler = new ModernToastScheduler();
+        var gate = new ModernWaveCueGate();
+        for (var id = 1; id <= 6; id++)
+            Assert.True(scheduler.Enqueue(Event(id)));
+
+        var first = scheduler.Advance(TimeSpan.Zero);
+        Assert.Equal("event-1", first[0].Event.EventId);
+        Assert.Equal(3, scheduler.WaitingCount);
+        Assert.True(gate.Observe(first));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(300))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(5300))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(5599))));
+
+        // Exactly at the retirement/admission boundary, scheduler returns
+        // the next three cards directly: no empty intermediary frame.
+        var queued = scheduler.Advance(TimeSpan.FromMilliseconds(5600));
+        Assert.Equal(new[] { "event-4", "event-5", "event-6" },
+            queued.Select(f => f.Event.EventId));
+        Assert.All(queued, f => Assert.Equal(ModernToastStage.Entering, f.Stage));
+        Assert.True(gate.Observe(queued)); // regresses original HWND-only cue
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(5601))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(6000))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(11000))));
+    }
+
+    [Fact]
+    public void IdleSeparatedWavesAlsoCueOnceAndSettingsRedrawsDoNotCueAgain()
+    {
+        var scheduler = new ModernToastScheduler();
+        var gate = new ModernWaveCueGate();
+        scheduler.Enqueue(Event(1));
+        Assert.True(gate.Observe(scheduler.Advance(TimeSpan.Zero)));
+        for (var ms = 1; ms <= 5600; ms += 349)
+            Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(ms))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(5600))));
+        Assert.True(scheduler.IsIdle);
+        Assert.True(scheduler.Enqueue(Event(2)));
+        Assert.True(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(5600))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(5600))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(5700))));
+    }
+
+    [Fact]
+    public void LateClockSkipDoesNotCueWavesNeverActuallyPresented()
+    {
+        var scheduler = new ModernToastScheduler();
+        var gate = new ModernWaveCueGate();
+        for (var i = 1; i <= 9; i++) scheduler.Enqueue(Event(i));
+        Assert.True(gate.Observe(scheduler.Advance(TimeSpan.Zero)));
+        // First and second waves' entire lifetimes were skipped;
+        // only one newly visible third wave should cue, not twice.
+        var third = scheduler.Advance(TimeSpan.FromMilliseconds(11200));
+        Assert.Equal("event-7", third[0].Event.EventId);
+        Assert.True(gate.Observe(third));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(11201))));
+        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(16800))));
+        Assert.True(scheduler.IsIdle);
+    }
+
+    [Fact]
+    public void CueGateRejectsNullFrameCollections()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new ModernWaveCueGate().Observe(null!));
+    }
+
+    [Fact]
     public void DuplicateEventIdNeverReplaysDuringSession()
     {
         var scheduler = new ModernToastScheduler();

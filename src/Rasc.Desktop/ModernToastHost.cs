@@ -15,6 +15,7 @@ namespace Rasc.Desktop;
 internal sealed class ModernToastHost : IDisposable
 {
     private readonly ModernToastScheduler _schedule = new();
+    private readonly ModernWaveCueGate _cueGate = new();
     // ONE shared topmost window represents the full Modern wave, rather than
     // one DWM-composited HWND per card (the source of inter-card seams).
     private ModernToastWindow? _window;
@@ -226,6 +227,11 @@ internal sealed class ModernToastHost : IDisposable
         if (_batchWake.IsEnabled && _schedule.ActiveCount == 0) return;
 
         var frames = _schedule.Advance(_clock.Elapsed);
+        // A queued replacement wave may be admitted on the SAME Tick that
+        // retires its predecessor, without a frame-empty interval or a new
+        // window. Cue identity therefore follows the presented wave, not HWND
+        // creation. Observe on every render to keep per-wave state accurate.
+        var waveJustPresented = _cueGate.Observe(frames);
         var fullscreen = ForegroundWindowPlacement.CaptureFullscreen();
         var work = SystemParameters.WorkArea;
         var scale = fullscreen is { } target
@@ -249,12 +255,12 @@ internal sealed class ModernToastHost : IDisposable
             foreach (var id in retired)
                 _content.Remove(id);
             if (newlyCreated)
-            {
                 _window.Show();
-                // One cue per admitted wave, never one per rendered frame
-                // and never while cross-profile admission is still queued.
+            // Fire AFTER the new wave is in the visual tree (and after
+            // Show for initial waves). A queued replacement reuses this
+            // same HWND but must still play one audio cue.
+            if (waveJustPresented)
                 _playCue?.Invoke();
-            }
         }
 
         if (_schedule.IsIdle)
