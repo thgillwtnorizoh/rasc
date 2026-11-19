@@ -62,7 +62,8 @@ public partial class MainWindow : Window
         _classicToasts.SetSettings(_presentationSettings);
         _modernToasts.SetSettings(_presentationSettings);
         _classicToasts.ConfigureCustomization(_customization.Font, PlayNotificationCue);
-        _modernToasts.ConfigureCustomization(_customization.Font, PlayNotificationCue);
+        _modernToasts.ConfigureCustomization(_customization.Font,
+            _customization.ModernTypography, PlayNotificationCue);
         _profileStore = new NotificationProfileStore(
             Path.Combine(_localDirectory, "notification-profile.txt"));
         _profile = _profileStore.Load();
@@ -80,6 +81,7 @@ public partial class MainWindow : Window
         _presentationControlsReady = true;
         SelectNamedChoice(FontChoiceBox, _customization.Font.ToString());
         SelectNamedChoice(SoundChoiceBox, _customization.Sound.ToString());
+        SelectNamedChoice(ModernTypographyBox, _customization.ModernTypography.ToString());
         _customizationControlsReady = true;
         UpdateSoundAvailability();
         RecentList.ItemsSource = _history;
@@ -358,13 +360,28 @@ public partial class MainWindow : Window
         UpdateCustomization(_customization with { Sound = choice });
     }
 
+    private void ModernTypographyBox_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_customizationControlsReady) return;
+        var tag = (ModernTypographyBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString();
+        if (!Enum.TryParse<ModernTypographyPreset>(tag, out var preset) ||
+            !Enum.IsDefined(preset)) return;
+        UpdateCustomization(_customization with { ModernTypography = preset });
+        StatusText.Text = preset == ModernTypographyPreset.Baseline
+            ? "Modern typography restored to the accepted baseline."
+            : "Experimental Modern Motiva typography: " + preset
+              + (PopupFontResolver.IsInstalled(PopupFontChoice.MotivaSans)
+                  ? " (font installed)." : " — MOTIVA SANS NOT INSTALLED; comparison invalid.");
+    }
+
     private void UpdateCustomization(NotificationCustomizationSettings settings)
     {
         var valid = settings.Validated();
         if (valid == _customization) return;
         _customization = valid;
         _classicToasts.ConfigureCustomization(valid.Font, PlayNotificationCue);
-        _modernToasts.ConfigureCustomization(valid.Font, PlayNotificationCue);
+        _modernToasts.ConfigureCustomization(valid.Font, valid.ModernTypography, PlayNotificationCue);
         if (!_customizationStore.TrySave(valid))
             StatusText.Text = "Popup customizations changed for this session but could not be saved.";
         UpdateSoundAvailability();

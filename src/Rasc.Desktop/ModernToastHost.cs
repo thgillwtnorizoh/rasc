@@ -26,6 +26,7 @@ internal sealed class ModernToastHost : IDisposable
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private TimeSpan? _lastRenderTime;
     private PopupFontChoice _fontChoice = PopupFontChoice.Original;
+    private ModernTypographyPreset _typography = ModernTypographyPreset.Baseline;
     private Action? _playCue;
     private int _fpsCap;
     private int _sizePercent;
@@ -65,10 +66,12 @@ internal sealed class ModernToastHost : IDisposable
         if (!_batchWake.IsEnabled) Tick(); // only relayout, never restart a wave
     }
 
-    internal void ConfigureCustomization(PopupFontChoice fontChoice, Action? playCue)
+    internal void ConfigureCustomization(PopupFontChoice fontChoice,
+        ModernTypographyPreset typography, Action? playCue)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _fontChoice = fontChoice;
+        _typography = typography;
         _playCue = playCue;
         if (!_batchWake.IsEnabled) Tick(); // restyle existing text; no new event
     }
@@ -241,7 +244,7 @@ internal sealed class ModernToastHost : IDisposable
         {
             var newlyCreated = _window is null;
             _window ??= new ModernToastWindow();
-            var retired = _window.Apply(frames, _content, scale, _fontChoice, work, fullscreen);
+            var retired = _window.Apply(frames, _content, scale, _fontChoice, _typography, work, fullscreen);
             foreach (var id in retired)
                 _content.Remove(id);
             if (newlyCreated)

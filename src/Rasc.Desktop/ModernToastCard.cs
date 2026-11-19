@@ -17,8 +17,10 @@ internal sealed class ModernToastCard : UserControl
 {
     private readonly Canvas _surface;
     private PopupFontChoice? _appliedFontChoice;
+    private ModernTypographyPreset? _appliedTypography;
 
-    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice)
+    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice,
+        ModernTypographyPreset typography)
     {
         Width = ModernToastScheduler.CardWidth;
         Height = ModernToastScheduler.CardHeight;
@@ -42,6 +44,7 @@ internal sealed class ModernToastCard : UserControl
         var headline = new TextBlock
         {
             Text = content.Name,
+            Tag = "ModernHeadline",
             Width = 204,
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
@@ -59,6 +62,7 @@ internal sealed class ModernToastCard : UserControl
             var numeric = new TextBlock
             {
                 Text = content.NumericProgress,
+                Tag = "ModernProgressNumber",
                 Foreground = new SolidColorBrush(Color.FromRgb(157, 168, 182)),
                 FontSize = 11,
                 IsHitTestVisible = false
@@ -104,6 +108,7 @@ internal sealed class ModernToastCard : UserControl
             var description = new TextBlock
             {
                 Text = content.Description,
+                Tag = "ModernDescription",
                 Width = 204,
                 FontSize = 11.5,
                 Foreground = new SolidColorBrush(Color.FromRgb(140, 150, 164)),
@@ -117,20 +122,42 @@ internal sealed class ModernToastCard : UserControl
         }
 
         Content = _surface;
-        ApplyFontChoice(fontChoice);
+        ApplyTypography(fontChoice, typography);
     }
 
-    internal void ApplyFontChoice(PopupFontChoice fontChoice)
+    internal void ApplyTypography(PopupFontChoice fontChoice,
+        ModernTypographyPreset typography)
     {
-        // The shared wave reapplies frame positions at render cadence. Font
-        // changes must never invalidate text layout on EVERY animation frame.
-        if (_appliedFontChoice == fontChoice) return;
+        // Only change text while debugging. Keep every accepted pixel of
+        // backdrop, golden halo, clipping, medal and window motion intact.
+        if (_appliedFontChoice == fontChoice && _appliedTypography == typography) return;
         _appliedFontChoice = fontChoice;
-        // Only actual popup text: the placeholder icon is nested in its
-        // Border and must retain the accepted visual size and face.
-        var family = PopupFontResolver.Resolve(fontChoice, classic: false);
+        _appliedTypography = typography;
+        var values = ModernTypographyCalibration.Resolve(typography);
+        var family = typography == ModernTypographyPreset.Baseline
+            ? PopupFontResolver.Resolve(fontChoice, classic: false)
+            : PopupFontResolver.Resolve(PopupFontChoice.MotivaSans, classic: false);
         foreach (var text in _surface.Children.OfType<TextBlock>())
+        {
             text.FontFamily = family;
+            if (text.Tag is "ModernHeadline")
+            {
+                text.FontSize = values.TitleSize;
+                text.FontWeight = FontWeight.FromOpenTypeWeight(values.TitleWeight);
+            }
+            else if (text.Tag is "ModernDescription")
+            {
+                text.FontSize = values.BodySize;
+                text.FontWeight = FontWeight.FromOpenTypeWeight(values.BodyWeight);
+            }
+            else if (text.Tag is "ModernProgressNumber")
+            {
+                // Keep numeric typography constant to avoid making the
+                // progress-icon alignment a confounding variable.
+                text.FontSize = 11;
+                text.FontWeight = FontWeights.Normal;
+            }
+        }
     }
 
     internal static Brush CreateBackdropGradient()

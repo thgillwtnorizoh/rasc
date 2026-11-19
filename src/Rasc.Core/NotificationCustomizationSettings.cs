@@ -11,10 +11,41 @@ namespace Rasc.Core;
 public enum PopupFontChoice { Original, MotivaSans, Arial, Helvetica, SansSerif }
 public enum NotificationSoundChoice { DesktopDefault, BigPicture, Custom, Off }
 
+/// <summary>
+/// Deliberately bounded typography comparison. Non-Baseline presets test
+/// installed Motiva Sans at isolated weight/size differences. They are NOT
+/// assertions about original Steam's font metrics.
+/// </summary>
+public enum ModernTypographyPreset
+{
+    Baseline,
+    MotivaTitle12Regular,
+    MotivaTitle12Medium,
+    MotivaTitle11Medium,
+    MotivaTitle11MediumBody11
+}
+
+public readonly record struct ModernTypographyValues(
+    double TitleSize, int TitleWeight, double BodySize, int BodyWeight);
+
+public static class ModernTypographyCalibration
+{
+    public static ModernTypographyValues Resolve(ModernTypographyPreset preset) => preset switch
+    {
+        ModernTypographyPreset.Baseline => new(12, 600, 11.5, 400),
+        ModernTypographyPreset.MotivaTitle12Regular => new(12, 400, 11.5, 400),
+        ModernTypographyPreset.MotivaTitle12Medium => new(12, 500, 11.5, 400),
+        ModernTypographyPreset.MotivaTitle11Medium => new(11, 500, 11.5, 400),
+        ModernTypographyPreset.MotivaTitle11MediumBody11 => new(11, 500, 11, 400),
+        _ => Resolve(ModernTypographyPreset.Baseline)
+    };
+}
+
 public sealed record NotificationCustomizationSettings(
     PopupFontChoice Font = PopupFontChoice.Original,
     NotificationSoundChoice Sound = NotificationSoundChoice.DesktopDefault,
-    string CustomPath = "")
+    string CustomPath = "",
+    ModernTypographyPreset ModernTypography = ModernTypographyPreset.Baseline)
 {
     public NotificationCustomizationSettings Validated()
     {
@@ -22,7 +53,9 @@ public sealed record NotificationCustomizationSettings(
         var sound = Enum.IsDefined(Sound) ? Sound : NotificationSoundChoice.DesktopDefault;
         var path = CustomPath ?? "";
         if (!NotificationSoundFiles.IsSupportedCustomPath(path)) path = "";
-        return new(font, sound, path);
+        var typography = Enum.IsDefined(ModernTypography)
+            ? ModernTypography : ModernTypographyPreset.Baseline;
+        return new(font, sound, path, typography);
     }
 }
 

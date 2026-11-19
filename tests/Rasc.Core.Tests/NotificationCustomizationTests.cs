@@ -41,6 +41,45 @@ public sealed class NotificationCustomizationTests
         Assert.Equal(sound, chosen.Sound);
     }
 
+    [Theory]
+    [InlineData(ModernTypographyPreset.Baseline, 12, 600, 11.5)]
+    [InlineData(ModernTypographyPreset.MotivaTitle12Regular, 12, 400, 11.5)]
+    [InlineData(ModernTypographyPreset.MotivaTitle12Medium, 12, 500, 11.5)]
+    [InlineData(ModernTypographyPreset.MotivaTitle11Medium, 11, 500, 11.5)]
+    [InlineData(ModernTypographyPreset.MotivaTitle11MediumBody11, 11, 500, 11)]
+    public void ModernMotivaVariantsAreBoundedAndReversible(
+        ModernTypographyPreset preset, double titleSize, int weight, double bodySize)
+    {
+        var spec = ModernTypographyCalibration.Resolve(preset);
+        Assert.Equal(titleSize, spec.TitleSize);
+        Assert.Equal(weight, spec.TitleWeight);
+        Assert.Equal(bodySize, spec.BodySize);
+        Assert.Equal(400, spec.BodyWeight);
+        var choice = new NotificationCustomizationSettings(ModernTypography: preset);
+        Assert.Equal(preset, choice.Validated().ModernTypography);
+    }
+
+    [Fact]
+    public void ModernCalibrationJsonIsBackwardCompatibleAndRejectsUnknownPresets()
+    {
+        var directory = Path.Combine(Path.GetTempPath(),
+            "rasc-modern-font-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = Path.Combine(directory, "notification-customization.json");
+            var store = new NotificationCustomizationStore(path);
+            File.WriteAllText(path, """{"Font":1,"Sound":0,"CustomPath":""}""");
+            Assert.Equal(ModernTypographyPreset.Baseline, store.Load().ModernTypography);
+            Assert.True(store.TrySave(store.Load() with
+                { ModernTypography = ModernTypographyPreset.MotivaTitle12Medium }));
+            Assert.Equal(ModernTypographyPreset.MotivaTitle12Medium, store.Load().ModernTypography);
+            File.WriteAllText(path, """{"ModernTypography":999}""");
+            Assert.Equal(ModernTypographyPreset.Baseline, store.Load().ModernTypography);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public void SoundReferencesMatchTwoOwnerUploadedWavHashes()
     {

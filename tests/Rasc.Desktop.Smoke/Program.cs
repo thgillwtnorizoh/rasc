@@ -62,6 +62,8 @@ internal static class Program
                 ?? throw new InvalidOperationException("Missing popup font selector.");
             var soundBox = (ComboBox?)window.FindName("SoundChoiceBox")
                 ?? throw new InvalidOperationException("Missing notification sound selector.");
+            var typographyBox = (ComboBox?)window.FindName("ModernTypographyBox")
+                ?? throw new InvalidOperationException("Missing Modern typography calibration selector.");
 
             void Select(string name)
             {
@@ -538,6 +540,23 @@ internal static class Program
                             {
                                 Fail("Modern popup text did not adopt Arial."); return;
                             }
+                            // Verify independent Modern Motiva tuning while
+                            // the same WPF HWND is live; the word metrics change
+                            // without creating a new achievement.
+                            SelectChoice(typographyBox, "MotivaTitle12Medium");
+                            if (texts.Single(t => t.Text == "Arrest Warrant").FontSize != 12 ||
+                                texts.Single(t => t.Text == "Arrest Warrant").FontWeight.ToOpenTypeWeight() != 500 ||
+                                !texts.All(t => t.FontFamily.Source.StartsWith("Motiva Sans", StringComparison.Ordinal)))
+                            {
+                                Fail("Modern source-motivated Motiva variant did not apply."); return;
+                            }
+                            SelectChoice(typographyBox, "MotivaTitle11Medium");
+                            if (texts.Single(t => t.Text == "Arrest Warrant").FontSize != 11)
+                            {
+                                Fail("Modern size calibration did not apply."); return;
+                            }
+                            SelectChoice(typographyBox, "Baseline");
+
                             // Verify changing font on an already visible popup.
                             SelectChoice(fontBox, "Helvetica");
                             if (texts.Any(t => !t.FontFamily.Source.StartsWith("Helvetica",
