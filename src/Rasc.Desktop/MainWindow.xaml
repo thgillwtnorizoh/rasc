@@ -45,6 +45,9 @@
         <Button Content="CS:GO location…" Padding="8,3" Click="ChooseGcLocation_Click"
                 ToolTip="Choose the game folder containing csgo.exe and csgo_gc/."/>
         <Button Content="Rescan" Margin="8,0,0,0" Padding="8,3" Click="RescanInstallations_Click"/>
+        <Button Content="Use automatic" Margin="6,0,0,0" Padding="8,3"
+                Click="ResetManualLocations_Click"
+                ToolTip="Clear manual Steam and CS:GO location overrides; return to automatic discovery."/>
       </WrapPanel>
     </StackPanel>
     <StackPanel Grid.Row="4">

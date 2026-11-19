@@ -35,6 +35,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _locationStore = new InstallationLocationStore(
+            Path.Combine(_localDirectory, "installation-locations.json"));
+        _locations = _locationStore.Load();
+        InitializeInstallationDiscovery();
         _presentationStore = new ClassicPresentationSettingsStore(
             Path.Combine(_localDirectory, "appearance.json"));
         _presentationSettings = _presentationStore.Load();
@@ -109,13 +113,26 @@ public partial class MainWindow : Window
             FileName = "achievements.txt",
             CheckFileExists = true
         };
-        if (dialog.ShowDialog(this) == true) PathBox.Text = dialog.FileName;
+        if (dialog.ShowDialog(this) != true) return;
+        if (_monitor is not null)
+        {
+            StatusText.Text = "Stop monitoring before changing the source.";
+            return;
+        }
+        var root = InstallationDiscovery.GameRootFromAchievementsPath(dialog.FileName);
+        if (root is null)
+        {
+            StatusText.Text = "The source must be csgo_gc/achievements.txt next to csgo.exe.";
+            return;
+        }
+        SetManualGcRoot(root);
     }
 
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
         try
         {
+            if (!CheckGcPathBeforeMonitoring()) return;
             var source = new GcFileSource(PathBox.Text);
             _store ??= new UnlockEventStore(Path.Combine(_localDirectory, "history.db"));
             _history.Clear();
@@ -404,9 +421,13 @@ public partial class MainWindow : Window
             return;
         }
         var path = NotificationSoundFiles.Resolve(_customization,
-            _localDirectory, AppContext.BaseDirectory);
+            _localDirectory, AppContext.BaseDirectory, _steam.Root);
         SoundAvailabilityText.Text = path is not null
-            ? "Sound: ready"
+            ? _steam.Root is not null && path.Equals(
+                Path.Combine(_steam.Root, "steamui", "sounds",
+                    NotificationSoundFiles.ExpectedFile(choice) ?? ""),
+                StringComparison.OrdinalIgnoreCase)
+                ? "Sound: ready (Steam)" : "Sound: ready (local)"
             : choice == NotificationSoundChoice.Custom
                 ? "Custom file unavailable"
                 : "Preset WAV not installed";
@@ -418,7 +439,7 @@ public partial class MainWindow : Window
         // settings changes, holds and animation frames don't retrigger sound.
         if (_customization.Sound == NotificationSoundChoice.Off) return;
         var path = NotificationSoundFiles.Resolve(_customization,
-            _localDirectory, AppContext.BaseDirectory);
+            _localDirectory, AppContext.BaseDirectory, _steam.Root);
         if (path is null)
         {
             UpdateSoundAvailability();
@@ -487,7 +508,7 @@ public partial class MainWindow : Window
             return;
         }
         var path = NotificationSoundFiles.Resolve(_customization,
-            _localDirectory, AppContext.BaseDirectory);
+            _localDirectory, AppContext.BaseDirectory, _steam.Root);
         if (path is null)
         {
             StatusText.Text = _customization.Sound == NotificationSoundChoice.Custom
