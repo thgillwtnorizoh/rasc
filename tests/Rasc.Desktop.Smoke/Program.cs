@@ -532,6 +532,39 @@ internal static class Program
                             {
                                 Fail("Missing resource/action in Steam+GC recovery UI."); return;
                             }
+                            // Real desktop discovery across a custom
+                            // Steam library recorded in libraryfolders.vdf.
+                            // No real Steam/GC installation is touched.
+                            var fixtureRoot = Path.Combine(Path.GetTempPath(),
+                                "rasc-library-smoke-" + Guid.NewGuid().ToString("N"));
+                            try
+                            {
+                                var steamRoot = Path.Combine(fixtureRoot, "Steam");
+                                var library = Path.Combine(fixtureRoot, "OtherLibrary");
+                                var commonGame = Path.Combine(library, "steamapps", "common", "LegacyCSGO");
+                                Directory.CreateDirectory(Path.Combine(steamRoot, "steamapps"));
+                                Directory.CreateDirectory(Path.Combine(commonGame, "csgo_gc"));
+                                File.WriteAllBytes(Path.Combine(commonGame, "csgo.exe"), [1]);
+                                File.WriteAllText(Path.Combine(commonGame, "csgo_gc", "achievements.txt"),
+                                    "test-only");
+                                var vdfPath = library.Replace(@"\", @"\\");
+                                File.WriteAllText(Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf"),
+                                    "\"libraryfolders\"\n{\n\"1\"\n{\n\"path\" \"" + vdfPath + "\"\n}\n}\n");
+                                var source = InstallationLocator.FindGc(
+                                    new SteamInstallReport(steamRoot, false, []), null, null);
+                                if (source.State != GcInstallState.Ready ||
+                                    source.GameRoot != commonGame)
+                                {
+                                    Fail("Steam library VDF did not discover the sibling GC/launcher game root.");
+                                    return;
+                                }
+                            }
+                            finally
+                            {
+                                if (Directory.Exists(fixtureRoot))
+                                    Directory.Delete(fixtureRoot, true);
+                            }
+
                             recoveryTest.Close();
                             recoveryTest = new InstallationRecoveryWindow(
                                 window,
