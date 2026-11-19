@@ -55,6 +55,46 @@ public sealed class NotificationCustomizationTests
     }
 
     [Fact]
+    public void OwnerObservedMixedFontKeepsAcceptedMetricsExceptBoldTitle()
+    {
+        var spec = ModernTypographySpec.For(ModernTypographyProfile.OwnerObservedMixed);
+        Assert.Equal(12, spec.NameSize);
+        Assert.Equal(700, spec.NameWeight);
+        Assert.Equal("#D3D8DF", spec.NameColor);
+        Assert.Equal(11.5, spec.DescriptionSize);
+        Assert.Equal(400, spec.DescriptionWeight);
+        Assert.Equal("#8C96A4", spec.DescriptionColor);
+        Assert.True(double.IsNaN(spec.LineHeight));
+        Assert.Equal(ModernTypographyProfile.OwnerObservedMixed,
+            new NotificationCustomizationSettings(
+                ModernTypography: ModernTypographyProfile.OwnerObservedMixed)
+                .Validated().ModernTypography);
+    }
+
+    [Fact]
+    public void MixedFontProfilePersistsAndOldSettingsRemainBaseline()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-owner-mixed-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "notification-customization.json");
+            var store = new NotificationCustomizationStore(path);
+            File.WriteAllText(path, """{"Font":1,"Sound":0}""");
+            Assert.Equal(ModernTypographyProfile.RascAccepted, store.Load().ModernTypography);
+            var next = store.Load() with
+            {
+                ModernTypography = ModernTypographyProfile.OwnerObservedMixed
+            };
+            Assert.True(store.TrySave(next));
+            Assert.Equal(next, store.Load());
+            Assert.Equal(PopupFontChoice.MotivaSans, store.Load().Font);
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    [Fact]
     public void SteamAchievementCssFontMetricsAreSourceDeclaredNotPixelFitted()
     {
         var standard = ModernTypographySpec.For(ModernTypographyProfile.SteamCssDesktop);

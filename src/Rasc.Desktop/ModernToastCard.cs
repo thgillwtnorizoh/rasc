@@ -133,11 +133,29 @@ internal sealed class ModernToastCard : UserControl
         // changes must never invalidate text layout on EVERY animation frame.
         if (_appliedFontChoice == fontChoice) return;
         _appliedFontChoice = fontChoice;
-        // Only actual popup text: the placeholder icon is nested in its
-        // Border and must retain the accepted visual size and face.
-        var family = PopupFontResolver.Resolve(fontChoice, classic: false);
+        ApplyTextFamilies();
+    }
+
+    /// <summary>
+    /// Reversible owner-observed mixed glyph test. A selected generic WPF
+    /// sans-serif is the Windows UI font (often Segoe UI), NOT guaranteed
+    /// to be Chromium's CSS sans-serif. Do not alter progress digits.
+    /// </summary>
+    private void ApplyTextFamilies()
+    {
+        var family = PopupFontResolver.Resolve(
+            _appliedFontChoice ?? PopupFontChoice.Original, classic: false);
         foreach (var text in _surface.Children.OfType<TextBlock>())
             text.FontFamily = family;
+
+        if (_appliedTypography == ModernTypographyProfile.OwnerObservedMixed)
+        {
+            _headline.FontFamily = PopupFontResolver.Resolve(
+                PopupFontChoice.MotivaSans, classic: false);
+            if (_description is not null)
+                _description.FontFamily = PopupFontResolver.Resolve(
+                    PopupFontChoice.SansSerif, classic: false);
+        }
     }
 
     /// <summary>
@@ -151,6 +169,7 @@ internal sealed class ModernToastCard : UserControl
     {
         if (_appliedTypography == mode) return;
         _appliedTypography = mode;
+        ApplyTextFamilies(); // Restores chosen family after leaving mixed mode.
         var spec = ModernTypographySpec.For(mode);
         _headline.FontSize = spec.NameSize;
         _headline.FontWeight = Weight(spec.NameWeight);
@@ -179,6 +198,7 @@ internal sealed class ModernToastCard : UserControl
         400 => FontWeights.Normal,
         500 => FontWeights.Medium,
         600 => FontWeights.SemiBold,
+        700 => FontWeights.Bold,
         _ => FontWeights.Normal
     };
 

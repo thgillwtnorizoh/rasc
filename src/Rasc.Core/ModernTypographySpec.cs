@@ -23,6 +23,11 @@ public readonly record struct ModernTypographySpec(
             new(12, 400, "#FFFFFF", 12, 300, "#8B929A", 16),
         ModernTypographyProfile.SteamCssBasicUi =>
             new(12, 500, "#FFFFFF", 12, 400, "#B8BCBF", 16),
+        // OWNER OBSERVATION, NOT SOURCE PROOF: Motiva Sans Bold name;
+        // RASC's Windows-system sans-serif choice for description.
+        // No other dimensions or colors adjusted from accepted baseline.
+        ModernTypographyProfile.OwnerObservedMixed =>
+            new(12, 700, "#D3D8DF", 11.5, 400, "#8C96A4", double.NaN),
         _ => For(ModernTypographyProfile.RascAccepted)
     };
 }

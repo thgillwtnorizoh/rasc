@@ -656,8 +656,30 @@ internal static class Program
                             Check(12, 400, "#FFFFFF", 12, 300, "#8B929A", 16);
                             SelectChoice(typographyBox, "SteamCssBasicUi");
                             Check(12, 500, "#FFFFFF", 12, 400, "#B8BCBF", 16);
+
+                            // User-observed glyph classification requires
+                            // different font families per line, regardless
+                            // of the global font selector.
+                            SelectChoice(typographyBox, "OwnerObservedMixed");
+                            Check(12, 700, "#D3D8DF", 11.5, 400, "#8C96A4", double.NaN);
+                            if (!title.FontFamily.Source.StartsWith("Motiva Sans", StringComparison.Ordinal) ||
+                                desc.FontFamily.Source != SystemFonts.MessageFontFamily.Source)
+                                throw new InvalidOperationException(
+                                    "Mixed-font candidate did not apply separate name/description faces.");
+
+                            // Changing global family while mixed must NOT
+                            // clobber either per-line override, but it MUST
+                            // apply normally again after restoring baseline.
+                            SelectChoice(fontBox, "Arial");
+                            if (!title.FontFamily.Source.StartsWith("Motiva Sans", StringComparison.Ordinal) ||
+                                desc.FontFamily.Source != SystemFonts.MessageFontFamily.Source)
+                                throw new InvalidOperationException(
+                                    "Font dropdown broke mixed override.");
                             SelectChoice(typographyBox, "RascAccepted");
                             Check(12, 600, "#D3D8DF", 11.5, 400, "#8C96A4", double.NaN);
+                            if (title.FontFamily.Source != "Arial" || desc.FontFamily.Source != "Arial")
+                                throw new InvalidOperationException(
+                                    "Baseline restore left mixed font-family overrides active.");
                             modernObserved = true;
                             stage++;
                         }
