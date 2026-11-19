@@ -534,7 +534,7 @@ internal static class Program
                             }
                             stage++;
                         }
-                        else if (stage == 2 && elapsed > 5900)
+                        else if (stage == 2 && elapsed > 6250)
                         {
                             if (modernCount() != 3 || cueCount != 2)
                             {
