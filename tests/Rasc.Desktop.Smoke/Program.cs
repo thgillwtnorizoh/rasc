@@ -821,7 +821,7 @@ internal static class Program
             // HWND. Require Modern observation only for scenarios that
             // actually request a Modern presentation.
             bool requireClassic =
-                scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare");
+                scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography");
             bool requireModern =
                 scenario is "modern-classic" or "modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography";
             if ((requireClassic && !classicObserved) ||
