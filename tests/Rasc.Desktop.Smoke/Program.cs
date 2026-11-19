@@ -22,9 +22,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
             return 2;
         }
         var scenario = args[0];
@@ -472,6 +472,7 @@ internal static class Program
 
             var clock = Stopwatch.StartNew();
             var stage = 0;
+            InstallationRecoveryWindow? recoveryTest = null;
             ModernToastHost? cueTestHost = null;
             Window? firstWaveWindow = null;
             var cueCount = 0;
@@ -486,6 +487,7 @@ internal static class Program
                 failed = true;
                 Console.Error.WriteLine("SMOKE FAILED: " + reason);
                 interval.Stop();
+                recoveryTest?.Close();
                 cueTestHost?.Dispose();
                 app.Shutdown();
             }
@@ -495,7 +497,66 @@ internal static class Program
                 var elapsed = clock.Elapsed.TotalMilliseconds;
                 try
                 {
-                    if (scenario == "modern-queued-sound")
+                    if (scenario == "installation-recovery")
+                    {
+                        if (stage == 0)
+                        {
+                            recoveryTest = new InstallationRecoveryWindow(
+                                window,
+                                new SteamInstallReport(@"C:\SteamMissing", true,
+                                    ["steam.exe", InstallationDiscovery.SteamDesktopWav]),
+                                new GcInstallReport(@"D:\CSGO", GcInstallState.MissingAchievements, false),
+                                () => { }, () => { }, () => { });
+                            recoveryTest.Show();
+                            stage++;
+                        }
+                        else if (stage == 1 && elapsed > 400)
+                        {
+                            if (recoveryTest?.Content is not ScrollViewer view ||
+                                view.Content is not StackPanel panel)
+                            {
+                                Fail("Missing real WPF installation diagnostic window."); return;
+                            }
+                            var labels = panel.Children.OfType<TextBlock>()
+                                .Select(t => t.Text).ToArray();
+                            var actions = panel.Children.OfType<WrapPanel>()
+                                .SelectMany(w => w.Children.OfType<Button>())
+                                .Select(b => b.Content?.ToString()).ToArray();
+                            if (!labels.Any(t => t.Contains("Files missing from the selected Steam installation") &&
+                                    t.Contains("steam.exe") && t.Contains(InstallationDiscovery.SteamDesktopWav)) ||
+                                !labels.Any(t => t.Contains("Missing: csgo_gc/achievements.txt") &&
+                                    t.Contains("play a game")) ||
+                                !actions.Contains("Set Steam location…") ||
+                                !actions.Contains("Set CS:GO location…") ||
+                                !actions.Contains("Open GT-610 downloads"))
+                            {
+                                Fail("Missing resource/action in Steam+GC recovery UI."); return;
+                            }
+                            recoveryTest.Close();
+                            recoveryTest = new InstallationRecoveryWindow(
+                                window,
+                                new SteamInstallReport(null, false, []),
+                                new GcInstallReport(null, GcInstallState.NoInstallation, false),
+                                () => { }, () => { }, () => { });
+                            recoveryTest.Show();
+                            stage++;
+                        }
+                        else if (stage == 2 && elapsed > 850)
+                        {
+                            var panel = (StackPanel)((ScrollViewer)recoveryTest!.Content).Content;
+                            var labels = panel.Children.OfType<TextBlock>().Select(t => t.Text).ToArray();
+                            if (!labels.Any(t => t.Contains("No Steam installation was found")) ||
+                                !labels.Any(t => t.Contains("No compatible Game Coordinator installation")))
+                            {
+                                Fail("Missing installation not-found case in recovery UI."); return;
+                            }
+                            recoveryTest.Close();
+                            recoveryTest = null;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario == "modern-queued-sound")
                     {
                         if (stage == 0)
                         {
@@ -935,7 +996,7 @@ internal static class Program
             // HWND. Require Modern observation only for scenarios that
             // actually request a Modern presentation.
             bool requireClassic =
-                scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography" or "modern-queued-sound");
+                scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography" or "modern-queued-sound" or "installation-recovery");
             bool requireModern =
                 scenario is "modern-classic" or "modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography" or "modern-queued-sound";
             if ((requireClassic && !classicObserved) ||
