@@ -4,6 +4,16 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 
 **Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 passed 117/117 tests. P003-C02 corrects Modern waves, watermark and rare/progress variants in draft PR #7; the final C02 source passed Windows CI 124/124 (0 build warnings/errors) and self-contained x64 publish at SHA 391582703a8b1cc8f415aa8eca293aeac0187309. P003-C03 foreground-app placement and Modern icon/medal correction passed Windows CI 132/132 at SHA 43e598ad97a25fb4230349e852016f976f1e725b. Runtime/independent QA and owner acceptance remain OPEN.
 
+## P005 — Automatic Steam / Game Coordinator installation discovery (draft)
+
+[**P005-C01 installation contract and checkpoint**](docs/P005/checkpoints/P005-C01.md) · [development PR #38](https://github.com/thgillwtnorizoh/rasc/pull/38) · [Work 1 independent QA #39](https://github.com/thgillwtnorizoh/rasc/issues/39).
+
+At startup, RASC automatically checks the chosen Steam installation in **Program Files (x86) → Program Files → discovered custom roots**, or a persisted explicit manual override. It checks for `steam.exe`, `steamui/` and both notification WAVs, and reports exact missing resources or **no installation found** with a recovery dialog and a manual Steam path picker. Steam sound presets play **directly from that single selected installation**, with no copy/redistribution or additional download; existing owner-imported WAV fallback and custom/off audio remain available.
+
+A compatible CS:GO GC root needs sibling `csgo.exe` + `csgo_gc/` and `csgo_gc/achievements.txt`. RASC discovers known Steam libraries/legacy selection, but does not scan every arbitrary directory. If the data file is missing, it explains how to obtain an achievement-capable [GT-610 Game Coordinator](https://github.com/GT-610/csgo-gc/releases) or generate the file by playing a game with an already installed compatible GC. Missing installations can be manually selected, or **Use automatic** clears both overrides. No Steam, GC or achievement data is written, and no active monitor is silently switched.
+
+**Qualification:** The older P004-C04 queued-wave sound correction passed developer CI but is **NOT CONFIRMED BY OWNER AUDIBLE TEST**. P005 discovery also requires owner Windows verification and independent QA; no merge or acceptance is implied. Previously bundled experimental rare-glow PNG mask rights are unresolved and P005 does not claim that the full WPF app is cleared of every proprietary asset.
+
 ## P004 — Custom popup font and notification sound (development)
 
 [**P004 owner testing instructions**](docs/P004/README.md) · [Work 2 checkpoint](docs/P004/checkpoints/P004-C01.md) · [draft PR #31](https://github.com/thgillwtnorizoh/rasc/pull/31).

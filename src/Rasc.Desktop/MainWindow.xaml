@@ -126,7 +126,7 @@
         </ComboBox>
         <TextBlock Text="Notification sound" Margin="20,0,8,0" VerticalAlignment="Center"/>
         <ComboBox x:Name="SoundChoiceBox" Width="205" SelectionChanged="SoundChoiceBox_SelectionChanged"
-                  ToolTip="Local sounds only. The exact two owner-provided Steam WAV presets can be imported privately. Custom files use available Windows codecs.">
+                  ToolTip="Default presets are read directly from the selected Steam installation (steamui/sounds); local owner import is only a fallback. Custom files use available Windows codecs.">
           <ComboBoxItem Content="Steam desktop (default)" Tag="DesktopDefault"/>
           <ComboBoxItem Content="Big Picture achievement" Tag="BigPicture"/>
           <ComboBoxItem Content="Custom sound" Tag="Custom"/>
@@ -177,7 +177,7 @@
       <TextBlock x:Name="StatusText" FontWeight="SemiBold" Text="Idle — choose the GC file to begin."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
-                 Text="Existing achievements baseline silently. Font family can be compared against source CSS Modern name/description metrics; RASC approved text remains default. Source CSS style changes do not modify geometry, rare glow or progress icon. No Steam/GC writes. Steam WAVs remain owner-local."/>
+                 Text="Installed Steam sounds are read in-place; no copies or client changes. The GC source is accepted only when csgo.exe and csgo_gc/ share a game directory and achievements.txt exists. Existing awards baseline silently. Typography experiments are parked; owner confirmation of queued-wave audio is still pending."/>
     </StackPanel>
   </Grid>
 </Window>
