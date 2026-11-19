@@ -17,8 +17,10 @@ internal sealed class ModernToastCard : UserControl
 {
     private readonly Canvas _surface;
     private PopupFontChoice? _appliedFontChoice;
+    private ModernTypographyChoice? _appliedTypography;
 
-    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice)
+    internal ModernToastCard(ModernToastContent content, PopupFontChoice fontChoice,
+        ModernTypographyChoice typography)
     {
         Width = ModernToastScheduler.CardWidth;
         Height = ModernToastScheduler.CardHeight;
@@ -117,20 +119,59 @@ internal sealed class ModernToastCard : UserControl
         }
 
         Content = _surface;
-        ApplyFontChoice(fontChoice);
+        ApplyFontChoice(fontChoice, typography);
     }
 
-    internal void ApplyFontChoice(PopupFontChoice fontChoice)
+    internal void ApplyFontChoice(PopupFontChoice fontChoice,
+        ModernTypographyChoice typography = ModernTypographyChoice.RascOriginal)
     {
-        // The shared wave reapplies frame positions at render cadence. Font
-        // changes must never invalidate text layout on EVERY animation frame.
-        if (_appliedFontChoice == fontChoice) return;
+        // The shared wave reapplies positions every frame; only apply
+        // typography on an actual settings change to avoid invalidation.
+        if (_appliedFontChoice == fontChoice && _appliedTypography == typography) return;
         _appliedFontChoice = fontChoice;
-        // Only actual popup text: the placeholder icon is nested in its
-        // Border and must retain the accepted visual size and face.
+        _appliedTypography = typography;
+        // Only actual popup text: icon star remains unchanged.
         var family = PopupFontResolver.Resolve(fontChoice, classic: false);
-        foreach (var text in _surface.Children.OfType<TextBlock>())
-            text.FontFamily = family;
+        var texts = _surface.Children.OfType<TextBlock>().ToArray();
+        foreach (var text in texts) text.FontFamily = family;
+        if (texts.Length == 0) return;
+        if (typography == ModernTypographyChoice.SteamCss2026)
+        {
+            // CONFIRMED IN PUBLIC STEAMTRACKING SNAPSHOT:
+            // sp.js module 3285 / 21728 -> short achievement template;
+            // sp.css: title Motiva Sans 11px 500, body 12px 400
+            // line-height 16px, letter-spacing 0.
+            // This mode uses user's selected font independently, so comparing
+            // Motiva versus Windows sans-serif remains possible.
+            texts[0].FontSize = 11;
+            texts[0].FontWeight = FontWeights.Medium;
+            texts[0].LineHeight = 16;
+            texts[0].LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+            if (texts.Length > 1)
+            {
+                texts[1].FontSize = 12;
+                texts[1].FontWeight = FontWeights.Normal;
+                texts[1].LineHeight = 16;
+                texts[1].LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+            }
+        }
+        else
+        {
+            // Exact RASC C07 baseline: no manual line height.
+            texts[0].FontSize = 12;
+            texts[0].FontWeight = FontWeights.SemiBold;
+            texts[0].ClearValue(TextBlock.LineHeightProperty);
+            texts[0].ClearValue(TextBlock.LineStackingStrategyProperty);
+            if (texts.Length > 1)
+            {
+                // Progress numeric and ordinary description share index 1.
+                // The progress text lacks a 204-DIP explicit width.
+                texts[1].FontSize = texts[1].Width == 204 ? 11.5 : 11;
+                texts[1].FontWeight = FontWeights.Normal;
+                texts[1].ClearValue(TextBlock.LineHeightProperty);
+                texts[1].ClearValue(TextBlock.LineStackingStrategyProperty);
+            }
+        }
     }
 
     internal static Brush CreateBackdropGradient()
