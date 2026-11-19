@@ -22,9 +22,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound");
             return 2;
         }
         var scenario = args[0];
@@ -472,6 +472,9 @@ internal static class Program
 
             var clock = Stopwatch.StartNew();
             var stage = 0;
+            ModernToastHost? cueTestHost = null;
+            Window? firstWaveWindow = null;
+            var cueCount = 0;
             byte[]? rareFirstFrame = null;
             var interval = new DispatcherTimer(DispatcherPriority.Normal)
             {
@@ -483,6 +486,7 @@ internal static class Program
                 failed = true;
                 Console.Error.WriteLine("SMOKE FAILED: " + reason);
                 interval.Stop();
+                cueTestHost?.Dispose();
                 app.Shutdown();
             }
 
@@ -491,7 +495,95 @@ internal static class Program
                 var elapsed = clock.Elapsed.TotalMilliseconds;
                 try
                 {
-                    if (scenario is "classic-only" or "modern-idle-classic")
+                    if (scenario == "modern-queued-sound")
+                    {
+                        if (stage == 0)
+                        {
+                            // A standalone presentation host allows exact
+                            // cue callback counting without installing sound
+                            // assets, using Steam, or playing physical audio.
+                            Select("Off");
+                            cueTestHost = new ModernToastHost(app.Dispatcher);
+                            cueTestHost.ConfigureCustomization(
+                                PopupFontChoice.Original,
+                                ModernTypographyProfile.RascAccepted,
+                                () => cueCount++);
+                            cueTestHost.PreviewWave(6); // 3 visible + 3 queued
+                            stage++;
+                        }
+                        else if (stage == 1 && elapsed > 850)
+                        {
+                            if (modernCount() != 3 || cueCount != 1)
+                            {
+                                Fail($"First Modern wave expected 3 cards and 1 cue; cards={modernCount()}, cues={cueCount}.");
+                                return;
+                            }
+                            firstWaveWindow = app.Windows.Cast<Window>().Single(w =>
+                                w.IsVisible && w.GetType().Name == "ModernToastWindow");
+                            VerifyOneSeamlessSurface(3);
+                            // Change presentation settings during the hold;
+                            // neither relayout nor font configuration may
+                            // retrigger the cue.
+                            cueTestHost!.ConfigureCustomization(
+                                PopupFontChoice.Arial,
+                                ModernTypographyProfile.RascAccepted,
+                                () => cueCount++);
+                            if (cueCount != 1)
+                            {
+                                Fail("Relayout changed the cue count."); return;
+                            }
+                            stage++;
+                        }
+                        else if (stage == 2 && elapsed > 5900)
+                        {
+                            if (modernCount() != 3 || cueCount != 2)
+                            {
+                                Fail($"Queued Modern wave must produce a second cue: cards={modernCount()}, cues={cueCount}.");
+                                return;
+                            }
+                            var currentWindow = app.Windows.Cast<Window>().Single(w =>
+                                w.IsVisible && w.GetType().Name == "ModernToastWindow");
+                            if (!ReferenceEquals(currentWindow, firstWaveWindow))
+                            {
+                                Fail("Queued wave unexpectedly replaced the shared HWND."); return;
+                            }
+                            VerifyOneSeamlessSurface(3);
+                            modernObserved = true;
+                            stage++;
+                        }
+                        else if (stage == 3 && elapsed > 11600)
+                        {
+                            if (modernCount() != 0 || cueCount != 2 || !cueTestHost!.IsIdle)
+                            {
+                                Fail("Queued wave must expire without repeated cue or orphaned window."); return;
+                            }
+                            // New wave only AFTER idle; this is the owner's
+                            // working reference behavior and must stay valid.
+                            cueTestHost.PreviewWave(3);
+                            stage++;
+                        }
+                        else if (stage == 4 && elapsed > 12000)
+                        {
+                            if (modernCount() != 3 || cueCount != 3)
+                            {
+                                Fail($"Idle-separated wave must emit third cue: cards={modernCount()}, cues={cueCount}.");
+                                return;
+                            }
+                            stage++;
+                        }
+                        else if (stage == 5 && elapsed > 17800)
+                        {
+                            if (modernCount() != 0 || cueCount != 3)
+                            {
+                                Fail("Idle-separated wave did not retire cleanly or repeated cue."); return;
+                            }
+                            cueTestHost!.Dispose();
+                            cueTestHost = null;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario is "classic-only" or "modern-idle-classic")
                     {
                         if (stage == 0)
                         {
@@ -843,9 +935,9 @@ internal static class Program
             // HWND. Require Modern observation only for scenarios that
             // actually request a Modern presentation.
             bool requireClassic =
-                scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography");
+                scenario is not ("modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography" or "modern-queued-sound");
             bool requireModern =
-                scenario is "modern-classic" or "modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography";
+                scenario is "modern-classic" or "modern-progress" or "modern-stack-two" or "modern-rare" or "modern-typography" or "modern-queued-sound";
             if ((requireClassic && !classicObserved) ||
                 (requireModern && !modernObserved))
             {
