@@ -1,7 +1,7 @@
 <Window x:Class="Rasc.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="RASC — CS Virtual Achievements" Width="820" Height="704"
+        Title="RASC — CS Virtual Achievements" Width="950" Height="765"
         MinWidth="610" MinHeight="540" WindowStartupLocation="CenterScreen">
   <Grid Margin="22">
     <Grid.RowDefinitions>
@@ -19,19 +19,37 @@
       <TextBlock Margin="0,6,0,0" Foreground="Gray"
                  Text="Read-only local GC monitor · No Steam integration or game injection"/>
     </StackPanel>
-    <Grid Grid.Row="2">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="Auto"/>
-      </Grid.ColumnDefinitions>
-      <StackPanel Grid.Column="0">
-        <TextBlock Margin="0,0,0,5" Text="GT-610 achievements.txt path" FontWeight="SemiBold"/>
-        <TextBox x:Name="PathBox" Padding="8,6" MinHeight="32"
-                 ToolTip="Choose csgo_gc\achievements.txt, not the Steam userdata folder."/>
-      </StackPanel>
-      <Button Grid.Column="1" Content="Browse..." Margin="10,23,0,0"
-              Padding="14,5" MinWidth="93" Click="Browse_Click"/>
-    </Grid>
+    <StackPanel Grid.Row="2">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0">
+          <TextBlock Margin="0,0,0,5" Text="GT-610 achievements.txt path" FontWeight="SemiBold"/>
+          <TextBox x:Name="PathBox" Padding="8,6" MinHeight="32"
+                   ToolTip="Automatically found in csgo_gc/ next to csgo.exe. Manual choice requires the same layout."/>
+        </StackPanel>
+        <Button Grid.Column="1" Content="Browse..." Margin="10,23,0,0"
+                Padding="14,5" MinWidth="93" Click="Browse_Click"/>
+      </Grid>
+      <WrapPanel Margin="0,6,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBlock Text="Steam:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <TextBlock x:Name="SteamPathText" Text="Checking…" Width="260" TextTrimming="CharacterEllipsis"
+                   Margin="5,0,9,0" VerticalAlignment="Center"/>
+        <Button Content="Steam location…" Padding="8,3" Click="ChooseSteamLocation_Click"
+                ToolTip="Manual Steam root override. Overrides auto-discovery until reset."/>
+        <TextBlock Text="GC:" Margin="10,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <TextBlock x:Name="GcStatusText" Text="Checking…" Width="150" TextTrimming="CharacterEllipsis"
+                   Margin="5,0,9,0" VerticalAlignment="Center"/>
+        <Button Content="CS:GO location…" Padding="8,3" Click="ChooseGcLocation_Click"
+                ToolTip="Choose the game folder containing csgo.exe and csgo_gc/."/>
+        <Button Content="Rescan" Margin="8,0,0,0" Padding="8,3" Click="RescanInstallations_Click"/>
+        <Button Content="Use automatic" Margin="6,0,0,0" Padding="8,3"
+                Click="ResetManualLocations_Click"
+                ToolTip="Clear manual Steam and CS:GO location overrides; return to automatic discovery."/>
+      </WrapPanel>
+    </StackPanel>
     <StackPanel Grid.Row="4">
       <WrapPanel Orientation="Horizontal">
       <Button x:Name="StartButton" Content="Start monitoring" Padding="18,9"
@@ -108,7 +126,7 @@
         </ComboBox>
         <TextBlock Text="Notification sound" Margin="20,0,8,0" VerticalAlignment="Center"/>
         <ComboBox x:Name="SoundChoiceBox" Width="205" SelectionChanged="SoundChoiceBox_SelectionChanged"
-                  ToolTip="Local sounds only. The exact two owner-provided Steam WAV presets can be imported privately. Custom files use available Windows codecs.">
+                  ToolTip="Default presets are read directly from the selected Steam installation (steamui/sounds); local owner import is only a fallback. Custom files use available Windows codecs.">
           <ComboBoxItem Content="Steam desktop (default)" Tag="DesktopDefault"/>
           <ComboBoxItem Content="Big Picture achievement" Tag="BigPicture"/>
           <ComboBoxItem Content="Custom sound" Tag="Custom"/>
@@ -159,7 +177,7 @@
       <TextBlock x:Name="StatusText" FontWeight="SemiBold" Text="Idle — choose the GC file to begin."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
-                 Text="Existing achievements baseline silently. Font family can be compared against source CSS Modern name/description metrics; RASC approved text remains default. Source CSS style changes do not modify geometry, rare glow or progress icon. No Steam/GC writes. Steam WAVs remain owner-local."/>
+                 Text="Installed Steam sounds are read in-place; no copies or client changes. The GC source is accepted only when csgo.exe and csgo_gc/ share a game directory and achievements.txt exists. Existing awards baseline silently. Typography experiments are parked; owner confirmation of queued-wave audio is still pending."/>
     </StackPanel>
   </Grid>
 </Window>

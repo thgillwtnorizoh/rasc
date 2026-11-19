@@ -43,6 +43,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Modern CSS source typography WPF smoke failed" }
           dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-queued-sound
           if ($LASTEXITCODE -ne 0) { throw "Queued Modern wave sound re-admission WPF smoke failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- installation-recovery
+          if ($LASTEXITCODE -ne 0) { throw "Steam/GC missing-file recovery WPF smoke failed" }
       - name: Capture exact CodePen fixture in installed Chrome
         shell: pwsh
         run: |
