@@ -67,6 +67,26 @@ public sealed class EventStoreTests
         Assert.NotEqual(first.EventId, second.EventId);
     }
 
+    [Fact]
+    public void BurstUsesAuthoritativeUnlockTimestampThenStableTieBreakAndPersistsDeliveryOrder()
+    {
+        using var store = new UnlockEventStore(NewDatabase());
+        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(), Now));
+        var first = store.AcceptSnapshot(Source,
+            Snapshot(("Z_FIRST", 50), ("A_LATEST", 52), ("B_SECOND", 51),
+                     ("X_UNKNOWN_TIME", 0), ("C_TIE", 51)), Now);
+        var expected = new[] { "Z_FIRST", "B_SECOND", "C_TIE", "A_LATEST", "X_UNKNOWN_TIME" };
+        Assert.Equal(expected, first.Select(e => e.AchievementId));
+        // Hash-based event IDs MUST NOT reorder simultaneous GC awards.
+        Assert.Equal(expected, store.GetPending(Source).Select(e => e.AchievementId));
+        Assert.Equal(expected.Reverse(), store.GetRecent(Source).Select(e => e.AchievementId));
+        foreach (var evt in first) store.MarkDelivered(evt.EventId, Now);
+        Assert.Empty(store.GetPending(Source));
+        Assert.Empty(store.AcceptSnapshot(Source,
+            Snapshot(("X_UNKNOWN_TIME", 0), ("C_TIE", 51), ("A_LATEST", 52),
+                     ("B_SECOND", 51), ("Z_FIRST", 50)), Now));
+    }
+
     [Fact] public void DifferentSourcesHaveIndependentBaselines()
     {
         using var store = new UnlockEventStore(NewDatabase());
