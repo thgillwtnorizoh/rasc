@@ -181,6 +181,9 @@
     </Grid>
     <StackPanel Grid.Row="7" Margin="0,14,0,0">
       <TextBlock x:Name="StatusText" FontWeight="SemiBold" Text="Idle — choose the GC file to begin."/>
+      <TextBlock x:Name="AchievementTextStatusText" Margin="0,4,0,0"
+                 Foreground="Gray" FontSize="11" TextTrimming="CharacterEllipsis"
+                 Text="Local achievement names: not checked."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
                  Text="Installed Steam sounds are read in-place; no copies or client changes. The GC source is accepted only when csgo.exe and csgo_gc/ share a game directory and achievements.txt exists. Existing awards baseline silently. Typography experiments are parked; owner confirmation of queued-wave audio is still pending."/>

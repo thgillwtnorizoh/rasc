@@ -216,12 +216,12 @@ public sealed class CsgoAchievementLocalization
             if (!AchievementKey(name)) continue;
             if (value.Value.Length > 16_384)
                 throw new FormatException("Achievement description exceeds safety limit.");
-            if (result.TryGetValue(name, out var prior))
-            {
-                if (!string.Equals(prior, value.Value, StringComparison.Ordinal))
-                    throw new FormatException("Conflicting duplicate achievement localization key: " + name);
-            }
-            else result.Add(name, value.Value);
+            // Original 2023 CS:GO localization intentionally repeats several
+            // achievement _DESC keys with revised 5v5 wording. Source KeyValues
+            // locality is ordered: a later definition overrides the earlier one.
+            // Rejecting duplicate text made the ENTIRE ~3.2M-character source
+            // unavailable and caused live popups to display only raw API IDs.
+            result[name] = value.Value;
         }
         throw new FormatException("Unterminated localization Tokens section.");
     }
@@ -294,8 +294,16 @@ public sealed class CsgoAchievementLocalization
                 {
                     char c = text[_position++];
                     if (c == '"') return new(TokenKind.Text, value.ToString());
+                    // Source 1 csgo_english.txt has physical newlines inside
+                    // quoted values (22 in the April 2023 archived source).
+                    // Preserve them as one normalized line break.
                     if (c is '\r' or '\n')
-                        throw new FormatException("Newline inside quoted KeyValues string.");
+                    {
+                        if (c == '\r' && _position < text.Length &&
+                            text[_position] == '\n') _position++;
+                        value.Append('\n');
+                        continue;
+                    }
                     if (c == '\\' && _position < text.Length)
                     {
                         char escaped = text[_position++];

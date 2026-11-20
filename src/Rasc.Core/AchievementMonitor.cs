@@ -17,6 +17,8 @@ public sealed class AchievementMonitor : IAsyncDisposable
     private GcCurrentAchievementState? _lastSignaledState;
 
     public event EventHandler<UnlockEvent>? UnlockDetected;
+    /// <summary>One ordered, source-confirmed reconciliation burst; replaces per-award UI dispatch.</summary>
+    public event EventHandler<IReadOnlyList<UnlockEvent>>? UnlockBatchDetected;
     public event EventHandler<GcCurrentAchievementState>? CurrentStateChanged;
     public event EventHandler<string>? StatusChanged;
 
@@ -89,7 +91,15 @@ public sealed class AchievementMonitor : IAsyncDisposable
                         _lastSignaledState = committed;
                         CurrentStateChanged?.Invoke(this, committed);
                     }
-                    foreach (var evt in _store.GetPending(_source.SourceKey))
+                    // Snapshot and history were committed before notification. Deliver
+                    // the entire pending burst in one UI callback, preventing a heavily
+                    // loaded fullscreen Dispatcher from splitting a 3-award burst across
+                    // multiple 45ms Modern admission windows. Existing single-event
+                    // listeners remain supported; MainWindow uses only the batch.
+                    var pending = _store.GetPending(_source.SourceKey);
+                    if (!ct.IsCancellationRequested && pending.Count > 0)
+                        UnlockBatchDetected?.Invoke(this, pending);
+                    foreach (var evt in pending)
                     {
                         if (ct.IsCancellationRequested) break;
                         UnlockDetected?.Invoke(this, evt);

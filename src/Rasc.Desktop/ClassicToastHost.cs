@@ -80,7 +80,9 @@ internal sealed class ClassicToastHost : IDisposable
         Enqueue(evt, "Achievement Unlocked!", evt.AchievementId);
 
     internal void Enqueue(UnlockEvent evt, ResolvedAchievementToast toast) =>
-        Enqueue(evt, toast.Name, toast.Description, toast.IconJpeg);
+        // The Classic two-line layout is a fixed notification headline and
+        // the localized achievement NAME, not the long goal description.
+        Enqueue(evt, "Achievement Unlocked!", toast.Name, toast.IconJpeg);
 
     private void Enqueue(UnlockEvent evt, string title, string description, byte[]? jpeg = null)
     {

@@ -24,19 +24,35 @@ public partial class MainWindow
             FormatException or InvalidOperationException)
         {
             _liveMetadataStatus = "Editable rarity database invalid: " + ex.Message;
+            ShowLiveAchievementStatus();
             return; // no guessed rarity or catalog for live events
         }
 
         if (_liveGameRoot is null)
         {
             _liveMetadataStatus = "GC game directory missing: raw achievement IDs only.";
+            ShowLiveAchievementStatus();
             return;
         }
         var localization = CsgoAchievementLocalization.LoadFromGameRoot(_liveGameRoot);
         _liveLocalization = localization.Catalog;
-        _liveMetadataStatus = localization.Status == ReadStatus.Valid
-            ? $"Ready: {_liveLocalization!.Count} original achievement text pairs."
-            : $"Local achievement names unavailable ({localization.Status}): " + localization.Detail;
+        _liveMetadataStatus = localization.Status == ReadStatus.Valid &&
+            _liveLocalization is { Count: > 0 }
+            ? $"Local CS:GO names READY: {_liveLocalization.Count} complete pairs."
+            : $"Local achievement names NOT READY ({localization.Status}): " +
+              (localization.Detail ?? "No usable achievement name/description pairs.");
+        ShowLiveAchievementStatus();
+    }
+
+    private void ShowLiveAchievementStatus()
+    {
+        // Distinct from the rotating monitor status: parsing errors were previously
+        // hidden in a tooltip overwritten by polling, while live toasts showed IDs.
+        AchievementTextStatusText.Text = _liveMetadataStatus;
+        AchievementTextStatusText.ToolTip = _liveGameRoot is null
+            ? _liveMetadataStatus
+            : Path.Combine(_liveGameRoot, "csgo", "resource", "csgo_english.txt") +
+              Environment.NewLine + _liveMetadataStatus;
     }
 
     private ResolvedAchievementToast ResolveLiveAchievement(UnlockEvent item) =>

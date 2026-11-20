@@ -206,12 +206,55 @@ public sealed class CsgoAchievementLocalizationTests
     {
         static void Reject(string input) =>
             Assert.Throws<FormatException>(() => CsgoAchievementLocalization.Parse(input));
-        Reject("\"lang\" {\"Tokens\" {\"KILL_ENEMY_HIGH_NAME\" \"A\" \"KILL_ENEMY_HIGH_NAME\" \"B\"}}");
+        // Original Source 1 has deliberate revised duplicate achievement descriptions.
+        // Duplicates are last-wins, not whole-file corruption.
         Reject("\"lang\" {\"Tokens\" {\"KILL_ENEMY_HIGH_NAME\" \"No close}");
         Reject("\"lang\" {\"Tokens\" {\"KILL_ENEMY_HIGH_NAME\" \"A\" ");
         Reject("\"lang\" {\"Language\" \"English\"}");
         Reject("\"lang\" {\"Tokens\" { /* no end ");
         Reject(new string('x', 4_194_305));
+    }
+
+    [Fact]
+    public void ArchivedSourceOneShapeAllowsMultilineQuotedValuesAndLaterDuplicateOverrides()
+    {
+        // Independent minimal fixture based on archived April 2023 csgo_english.txt
+        // blob 800b1e5ab3ced926b0a5a58dacdec66461f05dd2.
+        // Do not copy copyrighted original localization into this repository.
+        const string fixture = """
+            "lang" {
+              "Language" "English"
+              "Tokens" {
+                "Unrelated_Buy_Menu" "The \"%s1\"
+                    is not available for your team."
+                "KILL_ENEMY_RELOADING_NAME" "Synthetic Reload Award"
+                "KILL_ENEMY_RELOADING_DESC" "First synthetic description"
+                "KILL_ENEMY_RELOADING_DESC" "Revised synthetic description"
+                "KILL_ENEMY_TEAM_NAME" "Synthetic Cleaner"
+                "KILL_ENEMY_TEAM_DESC" "Synthetic five-player round goal"
+                "Other_Stat" "Unknown and ignored."
+              }
+            }
+            """;
+        var result = CsgoAchievementLocalization.Parse(fixture);
+        Assert.Equal(2, result.Count);
+        Assert.Equal("Synthetic Reload Award",
+            result.Find("KILL_ENEMY_RELOADING")!.Name);
+        Assert.Equal("Revised synthetic description",
+            result.Find("KILL_ENEMY_RELOADING")!.Description);
+        Assert.Equal("Synthetic Cleaner", result.Find("KILL_ENEMY_TEAM")!.Name);
+    }
+
+    [Fact]
+    public void QuotedPhysicalCrLfIsAllowedButUnterminatedQuoteStillFails()
+    {
+        var source = "\"lang\" {\"Tokens\" {\"KILL_ENEMY_HIGH_NAME\" \"Synthetic" +
+            "\r\n Name\" \"KILL_ENEMY_HIGH_DESC\" \"Synthetic requirement\"}}";
+        var name = CsgoAchievementLocalization.Parse(source)
+            .Find("KILL_ENEMY_HIGH")!.Name;
+        Assert.Equal("Synthetic\n Name", name);
+        Assert.Throws<FormatException>(() => CsgoAchievementLocalization.Parse(
+            "\"lang\" {\"Tokens\" {\"KILL_ENEMY_HIGH_NAME\" \"unterminated\n"));
     }
 
     [Fact]

@@ -41,6 +41,26 @@ internal static class P006LiveToastSmoke
             if (classic.FindName("AchievementArtwork") is not Image { Source: not null })
                 throw new InvalidOperationException("Classic real-JPEG artwork was not applied.");
 
+            // Regression for owner's screenshot: the live Classic path had
+            // mistakenly replaced "Achievement Unlocked!" with the raw API ID
+            // and put the long goal description where the name belongs.
+            using (var classicHost = new ClassicToastHost(app.Dispatcher))
+            {
+                var classicEvent = new UnlockEvent("classic-c03-live", "synthetic",
+                    "KILL_ENEMY_TEAM", 1790000000, DateTimeOffset.UtcNow);
+                classicHost.Enqueue(classicEvent, new ResolvedAchievementToast(
+                    "KILL_ENEMY_TEAM", "Synthetic Cleaner",
+                    "Synthetic five-kill goal", true, art));
+                var cardsField = typeof(ClassicToastHost).GetField(
+                    "_cards", BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?? throw new InvalidOperationException("Classic card registry missing.");
+                var cards = (Dictionary<string, ClassicToastCard>)cardsField.GetValue(classicHost)!;
+                var liveCard = cards.Values.Single();
+                if ((liveCard.FindName("Headline") as TextBlock)?.Text != "Achievement Unlocked!" ||
+                    (liveCard.FindName("Description") as TextBlock)?.Text != "Synthetic Cleaner")
+                    throw new InvalidOperationException("Classic live text mapping is reversed.");
+            }
+
             host = new ModernToastHost(app.Dispatcher);
             var clock = Stopwatch.StartNew();
             for (int i = 1; i <= 5; i++)
