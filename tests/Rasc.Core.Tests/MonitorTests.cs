@@ -116,6 +116,57 @@ public sealed class MonitorTests
     }
 
     [Fact]
+    public async Task FourGcAwardsInOneSnapshotBecomeOneOrderedUiBatch()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-burst-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "achievements.txt");
+        await File.WriteAllTextAsync(path, Snapshot(("BASELINE", 1)));
+        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        var source = new GcFileSource(path);
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(60));
+        var ready = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = new TaskCompletionSource<IReadOnlyList<UnlockEvent>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int batchCount = 0, singleCount = 0;
+        monitor.UnlockBatchDetected += (_, batch) =>
+        {
+            Interlocked.Increment(ref batchCount);
+            delivered.TrySetResult(batch.ToArray());
+        };
+        monitor.UnlockDetected += (_, _) => Interlocked.Increment(ref singleCount);
+        monitor.StatusChanged += (_, status) =>
+        {
+            if (status.Contains("1 unlocked", StringComparison.Ordinal))
+                ready.TrySetResult(true);
+            if (status.Contains("5 unlocked", StringComparison.Ordinal))
+                completed.TrySetResult(true);
+        };
+        await monitor.StartAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(store.GetRecent(source.SourceKey)); // silent first snapshot
+
+        var change = Snapshot(("BASELINE", 1),
+            ("FOURTH", 44), ("THIRD", 43), ("FIRST", 41), ("SECOND", 42));
+        await File.WriteAllTextAsync(path, change);
+        var batch = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(new[] { "FIRST", "SECOND", "THIRD", "FOURTH" },
+            batch.Select(x => x.AchievementId));
+        Assert.Equal(1, Volatile.Read(ref batchCount));
+        Assert.Equal(4, Volatile.Read(ref singleCount)); // legacy callbacks preserved
+        Assert.Equal(4, store.GetRecent(source.SourceKey).Count);
+        Assert.Empty(store.GetPending(source.SourceKey));
+        await Task.Delay(200);
+        Assert.Equal(1, Volatile.Read(ref batchCount)); // no replay on later poll
+    }
+
+    [Fact]
     public async Task StoppingMonitorDoesNotWaitForLongPollingInterval()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rasc-stop-" + Guid.NewGuid().ToString("N"));
