@@ -6,6 +6,43 @@ namespace Rasc.Desktop;
 
 public partial class MainWindow
 {
+    private CuratedAchievementCatalog? _liveDefinitions;
+    private CsgoAchievementLocalization? _liveLocalization;
+    private string? _liveGameRoot;
+    private string _liveMetadataStatus = "Achievement metadata not loaded.";
+
+    private void LoadLiveAchievementMetadata(string gcFilePath)
+    {
+        _liveDefinitions = null;
+        _liveLocalization = null;
+        _liveGameRoot = InstallationDiscovery.GameRootFromAchievementsPath(gcFilePath);
+        try
+        {
+            _liveDefinitions = CuratedAchievementCatalog.LoadDefault();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            FormatException or InvalidOperationException)
+        {
+            _liveMetadataStatus = "Editable rarity database invalid: " + ex.Message;
+            return; // no guessed rarity or catalog for live events
+        }
+
+        if (_liveGameRoot is null)
+        {
+            _liveMetadataStatus = "GC game directory missing: raw achievement IDs only.";
+            return;
+        }
+        var localization = CsgoAchievementLocalization.LoadFromGameRoot(_liveGameRoot);
+        _liveLocalization = localization.Catalog;
+        _liveMetadataStatus = localization.Status == ReadStatus.Valid
+            ? $"Ready: {_liveLocalization!.Count} original achievement text pairs."
+            : $"Local achievement names unavailable ({localization.Status}): " + localization.Detail;
+    }
+
+    private ResolvedAchievementToast ResolveLiveAchievement(UnlockEvent item) =>
+        AchievementToastResolver.Resolve(item.AchievementId,
+            _liveDefinitions, _liveLocalization, _liveGameRoot);
+
     private AchievementLibraryWindow? _libraryWindow;
     private CuratedAchievementCatalog? _libraryDefinitions;
     private CsgoAchievementLocalization? _libraryLocalization;
@@ -72,6 +109,10 @@ public partial class MainWindow
                 _libraryDefinitions = definitions;
                 _libraryLocalization = localization;
                 _libraryLocalizationStatus = textStatus;
+                // An explicit reload is also an owner edit of live metadata.
+                // Already queued toasts retain the version captured at arrival.
+                if (_monitor is not null && !string.IsNullOrWhiteSpace(PathBox.Text))
+                    LoadLiveAchievementMetadata(PathBox.Text);
             }
 
             _store ??= new UnlockEventStore(Path.Combine(_localDirectory, "history.db"));

@@ -15,7 +15,7 @@ namespace Rasc.Desktop;
 /// </summary>
 internal sealed class ClassicToastHost : IDisposable
 {
-    private sealed record Content(string Title, string Description);
+    private sealed record Content(string Title, string Description, byte[]? IconJpeg);
     private readonly ClassicToastScheduler _schedule = new();
     private readonly Dictionary<string, ClassicToastCard> _cards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Content> _text = new(StringComparer.Ordinal);
@@ -79,14 +79,17 @@ internal sealed class ClassicToastHost : IDisposable
     internal void Enqueue(UnlockEvent evt) =>
         Enqueue(evt, "Achievement Unlocked!", evt.AchievementId);
 
-    private void Enqueue(UnlockEvent evt, string title, string description)
+    internal void Enqueue(UnlockEvent evt, ResolvedAchievementToast toast) =>
+        Enqueue(evt, toast.Name, toast.Description, toast.IconJpeg);
+
+    private void Enqueue(UnlockEvent evt, string title, string description, byte[]? jpeg = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         // Bring the scheduler to NOW before enqueue; idle time must not
         // make a newly received achievement appear to have arrived earlier.
         Tick();
         if (!_schedule.Enqueue(evt)) return;
-        _text[evt.EventId] = new Content(title, description);
+        _text[evt.EventId] = new Content(title, description, jpeg);
         Tick();
     }
 
@@ -232,7 +235,7 @@ internal sealed class ClassicToastHost : IDisposable
                 if (!_cards.TryGetValue(frame.Event.EventId, out var card))
                 {
                     var content = _text[frame.Event.EventId];
-                    card = new ClassicToastCard(content.Title, content.Description);
+                    card = new ClassicToastCard(content.Title, content.Description, content.IconJpeg);
                     card.ApplyFontChoice(_fontChoice);
                     _cards.Add(frame.Event.EventId, card);
                     // Playback begins with the actual visual entrance,

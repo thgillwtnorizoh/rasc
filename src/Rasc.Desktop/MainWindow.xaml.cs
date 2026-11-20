@@ -134,6 +134,7 @@ public partial class MainWindow : Window
         {
             if (!CheckGcPathBeforeMonitoring()) return;
             var source = new GcFileSource(PathBox.Text);
+            LoadLiveAchievementMetadata(source.FilePath);
             _store ??= new UnlockEventStore(Path.Combine(_localDirectory, "history.db"));
             _history.Clear();
             foreach (var item in _store.GetRecent(source.SourceKey))
@@ -152,10 +153,11 @@ public partial class MainWindow : Window
                 // Rehydrated historical rows do NOT enter the presentation queue.
                 // This callback runs only for newly observed/pending delivery events.
                 var destination = _profile;
+                var content = ResolveLiveAchievement(item);
                 if (destination == NotificationProfile.Classic)
-                    QueuePresentation(destination, () => _classicToasts.Enqueue(item));
+                    QueuePresentation(destination, () => _classicToasts.Enqueue(item, content));
                 else if (destination == NotificationProfile.Modern)
-                    QueuePresentation(destination, () => _modernToasts.Enqueue(item));
+                    QueuePresentation(destination, () => _modernToasts.Enqueue(item, content));
             });
             _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -167,6 +169,7 @@ public partial class MainWindow : Window
             PathBox.IsEnabled = false;
             StopButton.IsEnabled = true;
             StatusText.Text = "Reading source; first-time history will be baselined.";
+            StatusText.ToolTip = _liveMetadataStatus;
         }
         catch (Exception ex)
         {

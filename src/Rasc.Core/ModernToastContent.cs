@@ -13,10 +13,13 @@ public sealed record ModernToastContent(
     int Current = 0,
     int Maximum = 0,
     bool IsRare = false,
-    int Minimum = 0)
+    int Minimum = 0,
+    byte[]? IconJpeg = null)
 {
-    public static ModernToastContent Unlock(string name, string description, bool isRare = false) =>
-        new(Nonempty(name), description ?? "", ModernToastKind.Unlock, 0, 0, isRare);
+    public static ModernToastContent Unlock(string name, string description, bool isRare = false,
+        byte[]? iconJpeg = null) =>
+        new(Nonempty(name), description ?? "", ModernToastKind.Unlock, 0, 0, isRare,
+            0, iconJpeg);
 
     /// <summary>
     /// Steam's progress component receives current, minimum and maximum:

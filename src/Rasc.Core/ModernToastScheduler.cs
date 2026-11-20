@@ -37,6 +37,25 @@ public sealed class ModernToastScheduler
             ? _waveStarted + Entrance + Hold
             : null;
 
+    /// <summary>
+    /// Next REQUIRED scheduler transition. The WPF compositor is permitted to
+    /// stop sending Rendering callbacks while fullscreen CS:GO is foreground.
+    /// Hosts must wake at these boundaries even when no new event arrives.
+    /// </summary>
+    public TimeSpan? NextTransitionDeadline
+    {
+        get
+        {
+            if (_wave.Count == 0) return null;
+            var elapsed = _previous - _waveStarted;
+            if (elapsed < Entrance) return _waveStarted + Entrance;
+            if (elapsed < Entrance + Hold) return _waveStarted + Entrance + Hold;
+            if (elapsed < Lifetime) return _waveStarted + Lifetime;
+            return _previous; // caller should immediately Advance at overdue boundary
+        }
+    }
+
+
     public bool Enqueue(UnlockEvent evt)
     {
         ArgumentNullException.ThrowIfNull(evt);

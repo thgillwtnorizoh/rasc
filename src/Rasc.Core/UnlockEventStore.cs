@@ -84,7 +84,10 @@ public sealed class UnlockEventStore : IDisposable
                 clear.ExecuteNonQuery();
 
             var discovered = new List<UnlockEvent>();
-            foreach (var (id, stamp) in snapshot.Achievements.OrderBy(x => x.Key, StringComparer.Ordinal))
+            foreach (var (id, stamp) in snapshot.Achievements
+                .OrderBy(x => x.Value == 0 ? 1 : 0)
+                .ThenBy(x => x.Value == 0 ? 0u : x.Value)
+                .ThenBy(x => x.Key, StringComparer.Ordinal))
             {
                 using (var update = Query(tx,
                     "INSERT INTO achievement_state(source_key,achievement_id,unlock_seconds) VALUES($src,$id,$stamp)",
@@ -139,11 +142,11 @@ public sealed class UnlockEventStore : IDisposable
     }
 
     public IReadOnlyList<UnlockEvent> GetPending(string sourceKey) =>
-        ReadEvents("WHERE source_key=$src AND delivered_ms IS NULL ORDER BY observed_ms,event_id",
+        ReadEvents("WHERE source_key=$src AND delivered_ms IS NULL ORDER BY observed_ms,rowid",
             sourceKey, 1000);
 
     public IReadOnlyList<UnlockEvent> GetRecent(string sourceKey, int limit = 100) =>
-        ReadEvents("WHERE source_key=$src ORDER BY observed_ms DESC,event_id DESC",
+        ReadEvents("WHERE source_key=$src ORDER BY observed_ms DESC,rowid DESC",
             sourceKey, Math.Clamp(limit, 1, 1000));
 
     private IReadOnlyList<UnlockEvent> ReadEvents(string where, string sourceKey, int limit)
