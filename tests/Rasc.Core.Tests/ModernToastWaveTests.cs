@@ -70,6 +70,75 @@ public sealed class ModernToastWaveTests
     }
 
     [Fact]
+    public void LiveAwardFromLaterGcWriteJoinsVisibleStackImmediatelyWithoutReplayingOlderCard()
+    {
+        var scheduler = new ModernToastScheduler();
+        var cue = new ModernWaveCueGate();
+
+        Assert.True(scheduler.Enqueue(E(1)));
+        var first = Assert.Single(scheduler.Advance(TimeSpan.Zero));
+        Assert.Equal(0, first.BottomRelativeY);
+        Assert.True(cue.Observe([first]));
+
+        scheduler.Advance(TimeSpan.FromMilliseconds(400));
+        Assert.True(scheduler.TryAdmitLiveDuringHold(
+            E(2), TimeSpan.FromMilliseconds(400)));
+        var startSecond = scheduler.Advance(TimeSpan.FromMilliseconds(400));
+        Assert.Equal(2, startSecond.Count);
+        Assert.Equal(-70, startSecond[0].BottomRelativeY);
+        Assert.Equal(0, startSecond[1].BottomRelativeY);
+        Assert.False(cue.Observe(startSecond)); // no replayed first cue
+
+        var midway = scheduler.Advance(TimeSpan.FromMilliseconds(550));
+        Assert.Equal(-105, midway[0].BottomRelativeY);
+        Assert.Equal(-35, midway[1].BottomRelativeY);
+        Assert.Equal(ModernToastStage.Showing, midway[0].Stage);
+        Assert.Equal(ModernToastStage.Entering, midway[1].Stage);
+        Assert.Equal(70d,
+            ModernStackGeometry.TopInViewport(midway[1]) -
+            ModernStackGeometry.TopInViewport(midway[0]));
+
+        Assert.True(scheduler.TryAdmitLiveDuringHold(
+            E(3), TimeSpan.FromMilliseconds(900)));
+        var next = scheduler.Advance(TimeSpan.FromMilliseconds(1200));
+        Assert.Equal(new[] { "wave-event-1", "wave-event-2", "wave-event-3" },
+            next.Select(x => x.Event.EventId));
+        Assert.Equal(new[] { -210d, -140d, -70d },
+            next.Select(x => x.BottomRelativeY));
+        Assert.All(next, frame => Assert.Equal(ModernToastStage.Showing, frame.Stage));
+        Assert.False(cue.Observe(next));
+        Assert.Equal(TimeSpan.FromMilliseconds(6200), scheduler.NextTransitionDeadline);
+
+        // Fourth cannot replace a live card; it waits the rest of the
+        // last-admitted member's 5s hold and single shared exit.
+        Assert.False(scheduler.TryAdmitLiveDuringHold(E(4), TimeSpan.FromMilliseconds(1200)));
+        Assert.True(scheduler.Enqueue(E(4)));
+        Assert.Equal(1, scheduler.WaitingCount);
+        Assert.Equal(3, scheduler.Advance(TimeSpan.FromMilliseconds(6200)).Count);
+        var replacement = scheduler.Advance(TimeSpan.FromMilliseconds(6500));
+        Assert.Equal("wave-event-4", Assert.Single(replacement).Event.EventId);
+        Assert.True(cue.Observe(replacement));
+    }
+
+    [Fact]
+    public void LiveAdmissionExpiresAfterThreeSecondsAndKeepsEarlierFifo()
+    {
+        var scheduler = new ModernToastScheduler();
+        scheduler.Enqueue(E(1));
+        scheduler.Advance(TimeSpan.Zero);
+        scheduler.Advance(TimeSpan.FromMilliseconds(3100));
+        Assert.False(scheduler.TryAdmitLiveDuringHold(
+            E(2), TimeSpan.FromMilliseconds(3100)));
+        Assert.True(scheduler.Enqueue(E(2)));
+        Assert.False(scheduler.TryAdmitLiveDuringHold(
+            E(3), TimeSpan.FromMilliseconds(3200))); // pending first
+        Assert.True(scheduler.Enqueue(E(3)));
+        var later = scheduler.Advance(TimeSpan.FromMilliseconds(5600));
+        Assert.Equal(new[] { "wave-event-2", "wave-event-3" },
+            later.Select(x => x.Event.EventId));
+    }
+
+    [Fact]
     public void WholeWaveReturnsToCommonOriginOnExit()
     {
         var s = new ModernToastScheduler();

@@ -113,11 +113,13 @@ internal sealed class ModernToastCard : UserControl
                 FontSize = 11.5,
                 Foreground = new SolidColorBrush(Color.FromRgb(140, 150, 164)),
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                TextWrapping = TextWrapping.NoWrap,
+                TextWrapping = TextWrapping.Wrap,
                 IsHitTestVisible = false
             };
             _description = description;
             Canvas.SetLeft(description, 69);
+            // Final one-line / two-line placement is chosen after the actual
+            // typography profile and family are applied below.
             Canvas.SetTop(description, 36);
             _surface.Children.Add(description);
         }
@@ -156,6 +158,8 @@ internal sealed class ModernToastCard : UserControl
                 _description.FontFamily = PopupFontResolver.Resolve(
                     PopupFontChoice.SansSerif, classic: false);
         }
+        if (_description is not null && _appliedTypography is { } current)
+            ArrangeDescriptionForMeasuredLineCount(ModernTypographySpec.For(current));
     }
 
     /// <summary>
@@ -181,6 +185,43 @@ internal sealed class ModernToastCard : UserControl
             _description.FontWeight = Weight(spec.DescriptionWeight);
             _description.Foreground = FrozenBrush(spec.DescriptionColor);
             SetLineMetrics(_description, spec.LineHeight);
+            ArrangeDescriptionForMeasuredLineCount(spec);
+        }
+    }
+
+    /// <summary>
+    /// Owner-provided Steam reference "The Argyle Sap" uses two description
+    /// lines with its title raised, whereas shorter descriptions retain the
+    /// accepted original RASC one-line positions. Measuring under the selected
+    /// font avoids fixed character-count guesses, especially across Motiva,
+    /// Windows fonts, and localized translations. The 283x70 card is unchanged.
+    /// </summary>
+    private void ArrangeDescriptionForMeasuredLineCount(ModernTypographySpec spec)
+    {
+        if (_description is null) return;
+        // Temporarily release the line clamp to measure natural wrapping at
+        // the true text width, not the fixed 70-pixel viewport height.
+        _description.Height = double.NaN;
+        _description.Measure(new Size(_description.Width, double.PositiveInfinity));
+        double oneLine = double.IsNaN(spec.LineHeight)
+            ? spec.DescriptionSize * 1.45 : spec.LineHeight;
+        bool wraps = _description.DesiredSize.Height > oneLine + 1.5;
+
+        if (wraps)
+        {
+            // The Argyle Sap reference: headline y≈10, description first line
+            // y≈26, second y≈42, two lines max with end ellipsis if longer.
+            SetLineMetrics(_description, 16);
+            _description.Height = 32;
+            Canvas.SetTop(_headline, 10);
+            Canvas.SetTop(_description, 26);
+        }
+        else
+        {
+            // Preserve the already owner-accepted short one-line layout.
+            _description.Height = 18;
+            Canvas.SetTop(_headline, 18);
+            Canvas.SetTop(_description, 36);
         }
     }
 
