@@ -145,19 +145,38 @@ public partial class MainWindow : Window
             _monitor = new AchievementMonitor(source, _store);
             _monitor.CurrentStateChanged += (_, state) =>
                 Dispatcher.BeginInvoke(new Action(() => OnCommittedLibrarySnapshot(state)));
-            _monitor.UnlockDetected += (_, item) => Dispatcher.Invoke(() =>
+            // Use ONE UI dispatch for one source-confirmed GC reconciliation burst.
+            // Otherwise individual Dispatcher.Invoke callbacks could exceed Modern's
+            // 45ms admission window under fullscreen load, leaving later awards
+            // waiting for the entire previous 5.6s wave to finish.
+            _monitor.UnlockBatchDetected += (_, burst) => Dispatcher.Invoke(() =>
             {
-                _history.Insert(0, new UnlockRow(item.AchievementId,
-                    item.ObservedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")));
-                while (_history.Count > 300) _history.RemoveAt(_history.Count - 1);
-                // Rehydrated historical rows do NOT enter the presentation queue.
-                // This callback runs only for newly observed/pending delivery events.
+                if (_closing || burst.Count == 0) return;
+                var newlyEarned = burst.ToArray();
+                foreach (var item in newlyEarned)
+                {
+                    _history.Insert(0, new UnlockRow(item.AchievementId,
+                        item.ObservedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")));
+                    while (_history.Count > 300) _history.RemoveAt(_history.Count - 1);
+                }
+                // Last valid snapshot is silent: only newly accepted, pending
+                // source awards are delivered here, never rehydrated history.
                 var destination = _profile;
-                var content = ResolveLiveAchievement(item);
-                if (destination == NotificationProfile.Classic)
-                    QueuePresentation(destination, () => _classicToasts.Enqueue(item, content));
-                else if (destination == NotificationProfile.Modern)
-                    QueuePresentation(destination, () => _modernToasts.Enqueue(item, content));
+                if (destination is NotificationProfile.Classic or NotificationProfile.Modern)
+                {
+                    var resolved = newlyEarned.Select(item =>
+                        (Event: item, Content: ResolveLiveAchievement(item))).ToArray();
+                    QueuePresentation(destination, () =>
+                    {
+                        foreach (var (evt, content) in resolved)
+                        {
+                            if (destination == NotificationProfile.Classic)
+                                _classicToasts.Enqueue(evt, content);
+                            else
+                                _modernToasts.Enqueue(evt, content);
+                        }
+                    });
+                }
             });
             _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(new Action(() =>
             {
