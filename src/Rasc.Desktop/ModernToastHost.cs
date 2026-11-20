@@ -26,6 +26,7 @@ internal sealed class ModernToastHost : IDisposable
     private readonly DispatcherTimer _anchorWake;
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private TimeSpan? _lastRenderTime;
+    private TimeSpan? _scheduledWakeAt;
     private PopupFontChoice _fontChoice = PopupFontChoice.Original;
     private ModernTypographyProfile _typography = ModernTypographyProfile.RascAccepted;
     private Action? _playCue;
@@ -165,6 +166,7 @@ internal sealed class ModernToastHost : IDisposable
     private void OnHoldWake(object? sender, EventArgs args)
     {
         _holdWake.Stop();
+        _scheduledWakeAt = null;
         Tick();
     }
 
@@ -180,7 +182,6 @@ internal sealed class ModernToastHost : IDisposable
 
     private void StartRendering()
     {
-        _holdWake.Stop();
         if (_renderSubscribed) return;
         _lastRenderTime = null;
         _frameGate.Reset();
@@ -196,10 +197,19 @@ internal sealed class ModernToastHost : IDisposable
         _lastRenderTime = null;
     }
 
-    private void SleepUntilExpiry()
+    private void ScheduleNextTransitionWake()
     {
-        var next = _schedule.NextHoldDeadline;
-        if (next is null) return;
+        var next = _schedule.NextTransitionDeadline;
+        if (next is null)
+        {
+            _holdWake.Stop();
+            _scheduledWakeAt = null;
+            return;
+        }
+        // Do not restart the same deadline on each WPF render callback.
+        // Otherwise repeated renders can starve a timer indefinitely.
+        if (_holdWake.IsEnabled && _scheduledWakeAt == next) return;
+        _scheduledWakeAt = next;
         var remaining = next.Value - _clock.Elapsed;
         _holdWake.Interval = TimeSpan.FromMilliseconds(
             Math.Clamp(Math.Ceiling(remaining.TotalMilliseconds), 1.0, 60000.0));
@@ -266,7 +276,6 @@ internal sealed class ModernToastHost : IDisposable
         if (_schedule.IsIdle)
         {
             StopRendering();
-            _holdWake.Stop();
             _anchorWake.Stop();
         }
         else if (_schedule.IsAnimating)
@@ -278,8 +287,10 @@ internal sealed class ModernToastHost : IDisposable
         {
             _anchorWake.Start();
             StopRendering();
-            SleepUntilExpiry();
         }
+        // WPF compositor may not render while fullscreen CS:GO is active;
+        // timer-driven transitions must still retire and present EVERY wave.
+        ScheduleNextTransitionWake();
     }
 
     public void Dispose()
