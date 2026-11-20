@@ -1,5 +1,6 @@
 # P006 / L001 — Historical CS:GO localization and local VPK/VTF achievement icon discovery
 
+> **CORRECTION — owner-local validation, 2026-11-20:** The previously suspected `materials/vgui/achievements/` files were **Counter-Strike: Source icons**, not valid CS:GO artwork. The owner instead found **181 loose JPEGs** in **each** of `csgo/materials/panorama/images/icons/achievements/` and `csgo/resource/flash/images/achievements/`. Owner's SHA-256 comparison reported identical filename sets and zero content mismatches. The provided `rasc-icon-audit.csv` yields 170 image/localization matches and 11 unmatched files. Historical active-set identity is not proven by an image/text match alone. Prefer these read-only loose-file locations in a future loader; do **not** revive the VPK/VTF extraction recommendation below as an accepted source. See [v0.2 catalog import](../../../docs/P006/catalog-import.md).\n\n
 **Project/Campaign/Actor:** RASC / P006-C01 / Headquarters source gap research, for Work 1 #40 and Work 2 #41.  
 **Status:** VERIFIED RESEARCH FINDING for archived original localization **only**; owner-local VPK entry list and icon decoding **NOT YET VERIFIED**, and no achievement API-ID↔token or criteria equivalence claimed.  
 **Owner observation date:** 2026-11-19.
