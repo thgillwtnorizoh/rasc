@@ -60,6 +60,62 @@ public sealed class MonitorTests
         Assert.Single(store.GetRecent(new GcFileSource(path).SourceKey));
     }
     [Fact]
+    public async Task CurrentStateEventRequiresCommittedValidChangeAndNeverResetsOnCorruption()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-current-event-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "achievements.txt");
+        await File.WriteAllTextAsync(path, Snapshot(("UNSTOPPABLE_FORCE", 0)));
+        var source = new GcFileSource(path);
+        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(60));
+
+        var first = new TaskCompletionSource<GcCurrentAchievementState>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<GcCurrentAchievementState>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var invalid = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int events = 0;
+        monitor.CurrentStateChanged += (_, state) =>
+        {
+            if (Interlocked.Increment(ref events) == 1)
+                first.TrySetResult(state);
+            else second.TrySetResult(state);
+        };
+        monitor.StatusChanged += (_, status) =>
+        {
+            if (status.StartsWith("Invalid:", StringComparison.Ordinal))
+                invalid.TrySetResult(true);
+        };
+        await monitor.StartAsync();
+        var baseline = await first.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(baseline.HasValidSnapshot);
+        Assert.Equal((uint)0, baseline.Achievements["UNSTOPPABLE_FORCE"]);
+        Assert.Empty(store.GetRecent(source.SourceKey));
+
+        await Task.Delay(250);
+        Assert.Equal(1, Volatile.Read(ref events)); // no redundant callbacks each poll
+
+        await File.WriteAllTextAsync(path, "\"version\" \"1\" \"achievements\" {");
+        await invalid.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal((uint)0,
+            store.GetCurrentState(source.SourceKey).Achievements["UNSTOPPABLE_FORCE"]);
+        Assert.Equal(1, Volatile.Read(ref events));
+
+        await File.WriteAllTextAsync(path,
+            Snapshot(("UNSTOPPABLE_FORCE", 0), ("IMMOVABLE_OBJECT", 1790000300)));
+        var changed = await second.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, changed.Achievements.Count);
+        Assert.Equal((uint)1790000300, changed.Achievements["IMMOVABLE_OBJECT"]);
+        Assert.Equal(2, Volatile.Read(ref events));
+        Assert.Equal("IMMOVABLE_OBJECT",
+            Assert.Single(store.GetRecent(source.SourceKey)).AchievementId);
+    }
+
+    [Fact]
     public async Task StoppingMonitorDoesNotWaitForLongPollingInterval()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rasc-stop-" + Guid.NewGuid().ToString("N"));
