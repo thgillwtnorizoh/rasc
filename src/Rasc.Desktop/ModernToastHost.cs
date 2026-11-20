@@ -82,6 +82,10 @@ internal sealed class ModernToastHost : IDisposable
     internal void Enqueue(UnlockEvent evt) =>
         Enqueue(evt, ModernToastContent.Unlock(evt.AchievementId, ""));
 
+    internal void Enqueue(UnlockEvent evt, ResolvedAchievementToast toast) =>
+        Enqueue(evt, ModernToastContent.Unlock(
+            toast.Name, toast.Description, toast.IsRare, toast.IconJpeg));
+
     private void Enqueue(UnlockEvent evt, ModernToastContent content)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
