@@ -24,7 +24,9 @@
                Fill="#121A2A"/>
     <!-- Original artifact/icon not licensed for redistribution: unframed placeholder. -->
     <Rectangle Canvas.Left="14" Canvas.Top="14" Width="64" Height="64" Fill="#343434"/>
-    <TextBlock Canvas.Left="14" Canvas.Top="14" Width="64" Height="64"
+    <Image x:Name="AchievementArtwork" Canvas.Left="14" Canvas.Top="14"
+           Width="64" Height="64" Visibility="Collapsed" Stretch="UniformToFill"/>
+    <TextBlock x:Name="PlaceholderStar" Canvas.Left="14" Canvas.Top="14" Width="64" Height="64"
                Text="★" Foreground="#B4B4B4" FontFamily="Arial"
                FontSize="28" FontWeight="Bold" TextAlignment="Center"
                VerticalAlignment="Center"/>
