@@ -41,7 +41,7 @@ internal sealed class ModernToastCard : UserControl
 
         // Decorative background and Steam watermark are drawn only ONCE
         // across the occupied wave by the shared parent HWND.
-        _surface.Children.Add(CreateIcon(content.IsRare));
+        _surface.Children.Add(CreateIcon(content.IsRare, content.IconJpeg));
 
         var headline = new TextBlock
         {
@@ -384,7 +384,7 @@ internal sealed class ModernToastCard : UserControl
         return root;
     }
 
-    private static FrameworkElement CreateIcon(bool rare)
+    private static FrameworkElement CreateIcon(bool rare, byte[]? jpeg)
     {
         // The CodePen's real wrapper is 48x48. The former extra 54x54
         // WPF canvas introduced its own geometry and shadow layer offsets.
@@ -434,6 +434,7 @@ internal sealed class ModernToastCard : UserControl
         // The actual RASC achievement icon is artwork, not the CodePen's
         // demonstration-only blank #222 fakeIcon. Keep its existing dark
         // face and yellow rare star to isolate glow fidelity from icon art.
+        var image = AchievementToastArtwork.Decode(jpeg);
         var icon = new Border
         {
             Width = LegendaryGlowSpec.IconSize,
@@ -441,16 +442,23 @@ internal sealed class ModernToastCard : UserControl
             BorderThickness = new Thickness(0),
             Background = new SolidColorBrush(Color.FromRgb(13, 16, 22)),
             Tag = "AchievementIconFace",
-            Child = new TextBlock
-            {
-                Text = "★", // Deliberate preview icon until catalog assets.
-                FontSize = 23,
-                Foreground = rare
-                    ? new SolidColorBrush(Color.FromRgb(255, 216, 70))
-                    : new SolidColorBrush(Color.FromRgb(179, 196, 222)),
-                TextAlignment = TextAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
+            Child = image is not null
+                ? new Image
+                {
+                    Source = image,
+                    Stretch = Stretch.UniformToFill,
+                    IsHitTestVisible = false
+                }
+                : new TextBlock
+                {
+                    Text = "★", // Safe fallback if the original local art is absent.
+                    FontSize = 23,
+                    Foreground = rare
+                        ? new SolidColorBrush(Color.FromRgb(255, 216, 70))
+                        : new SolidColorBrush(Color.FromRgb(179, 196, 222)),
+                    TextAlignment = TextAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
         };
         wrapper.Children.Add(icon);
         return wrapper;
