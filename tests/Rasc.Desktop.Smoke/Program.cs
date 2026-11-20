@@ -22,6 +22,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "achievement-library")
+            return AchievementLibrarySmoke.Run();
+
         if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
         {
             Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
