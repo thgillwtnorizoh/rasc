@@ -204,24 +204,24 @@ public sealed class CsgoAchievementLocalization
 
             var value = reader.Next() ??
                 throw new FormatException("Localization token without a value.");
-            if (value.Value.Kind == TokenKind.Open)
+            if (value.Kind == TokenKind.Open)
             {
                 SkipNested(reader);
                 continue;
             }
-            if (value.Value.Kind != TokenKind.Text)
+            if (value.Kind != TokenKind.Text)
                 throw new FormatException("Malformed localization token value.");
 
             string name = key.Value.Value;
             if (!AchievementKey(name)) continue;
-            if (value.Value.Value.Length > 16_384)
+            if (value.Value.Length > 16_384)
                 throw new FormatException("Achievement description exceeds safety limit.");
             if (result.TryGetValue(name, out var prior))
             {
-                if (!string.Equals(prior, value.Value.Value, StringComparison.Ordinal))
+                if (!string.Equals(prior, value.Value, StringComparison.Ordinal))
                     throw new FormatException("Conflicting duplicate achievement localization key: " + name);
             }
-            else result.Add(name, value.Value.Value);
+            else result.Add(name, value.Value);
         }
         throw new FormatException("Unterminated localization Tokens section.");
     }
@@ -233,8 +233,8 @@ public sealed class CsgoAchievementLocalization
         {
             var token = reader.Next() ??
                 throw new FormatException("Unterminated nested localization section.");
-            if (token.Value.Kind == TokenKind.Open) depth++;
-            if (token.Value.Kind == TokenKind.Close) depth--;
+            if (token.Kind == TokenKind.Open) depth++;
+            if (token.Kind == TokenKind.Close) depth--;
             if (depth > 16) throw new FormatException("Localization nesting exceeds limit.");
         }
     }
