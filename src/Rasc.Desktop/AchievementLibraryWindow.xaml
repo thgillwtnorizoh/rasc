@@ -23,14 +23,14 @@
               Click="Reload_Click" ToolTip="Re-read editable rarity CSV and local CS:GO localization."/>
       <ComboBox DockPanel.Dock="Right" x:Name="StateFilterBox" Width="136"
                 Margin="9,0,10,0" SelectedIndex="0"
-                SelectionChanged="Filter_Changed">
+                SelectionChanged="StateFilterBox_SelectionChanged">
         <ComboBoxItem Content="All states" Tag="All"/>
         <ComboBoxItem Content="Earned" Tag="Earned"/>
         <ComboBoxItem Content="Locked" Tag="Locked"/>
         <ComboBoxItem Content="Unknown" Tag="Unknown"/>
       </ComboBox>
       <TextBox x:Name="SearchBox" Padding="8,6" MinHeight="30"
-               TextChanged="Filter_Changed"
+               TextChanged="SearchBox_TextChanged"
                ToolTip="Search by name, description or API ID."/>
     </DockPanel>
     <TextBlock x:Name="TextSourceText" Grid.Row="2" Margin="0,0,0,9"
