@@ -84,21 +84,41 @@ internal sealed class ModernToastHost : IDisposable
 
     internal void Enqueue(UnlockEvent evt, ResolvedAchievementToast toast) =>
         Enqueue(evt, ModernToastContent.Unlock(
-            toast.Name, toast.Description, toast.IsRare, toast.IconJpeg));
+            toast.Name, toast.Description, toast.IsRare, toast.IconJpeg),
+            allowLiveLateAdmission: true);
 
-    private void Enqueue(UnlockEvent evt, ModernToastContent content)
+    private void Enqueue(UnlockEvent evt, ModernToastContent content,
+        bool allowLiveLateAdmission = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_schedule.IsIdle && !_batchWake.IsEnabled)
-            Tick(); // rebase the monotonic scheduler before any new event
-        if (!_schedule.Enqueue(evt)) return;
+            Tick(); // rebase monotonic time before first arrival
+
+        // A later GC file write may follow the first award by hundreds of
+        // milliseconds or seconds. The historical 45ms initial admission
+        // window alone could not group those live events. For REAL awards,
+        // join the still-visible stack if room remains, with each newcomer
+        // sliding in rather than freezing for a 5.6s next-wave wait.
+        bool hasActive = _schedule.ActiveCount > 0;
+        if (hasActive && allowLiveLateAdmission)
+            Tick(); // retire overdue wave before testing live admission
+
+        bool joined = allowLiveLateAdmission && hasActive &&
+            _schedule.TryAdmitLiveDuringHold(evt, _clock.Elapsed);
+        if (!joined && !_schedule.Enqueue(evt)) return;
         _content.Add(evt.EventId, content);
 
-        if (_schedule.ActiveCount == 0 && !_batchWake.IsEnabled)
+        if (joined)
+        {
+            Tick(); // show entrant immediately; preserve old card and cue
+        }
+        else if (_schedule.ActiveCount == 0 && !_batchWake.IsEnabled)
+        {
             _batchWake.Start();
-        // During an existing wave, arrivals are queued. The scheduler's
-        // next wave cannot be admitted until all active members leave.
+        }
+        // Full / past-window live arrivals remain strictly FIFO in the next
+        // automatic wave; previews keep established immutable-wave behavior.
     }
 
     internal void PreviewUnlock() =>
