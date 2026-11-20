@@ -106,6 +106,38 @@ public sealed class UnlockEventStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// Reconstructs the last successfully committed snapshot for this exact GC source.
+    /// HasValidSnapshot=false means Unknown, NOT zero earned or all locked.
+    /// The record is historical/last-known until the monitor confirms a live valid read.
+    /// Neither this query nor a missing/invalid source file changes the SQLite ledger.
+    /// </summary>
+    public GcCurrentAchievementState GetCurrentState(string sourceKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
+        lock (_sync)
+        {
+            using var known = _connection.CreateCommand();
+            known.CommandText = "SELECT 1 FROM sources WHERE source_key=$src LIMIT 1";
+            known.Parameters.AddWithValue("$src", sourceKey);
+            if (known.ExecuteScalar() is null)
+                return GcCurrentAchievementState.Unknown;
+
+            using var query = _connection.CreateCommand();
+            query.CommandText = """
+                SELECT achievement_id, unlock_seconds
+                FROM achievement_state WHERE source_key=$src
+                ORDER BY achievement_id
+                """;
+            query.Parameters.AddWithValue("$src", sourceKey);
+            var values = new Dictionary<string, uint>(StringComparer.Ordinal);
+            using var reader = query.ExecuteReader();
+            while (reader.Read())
+                values.Add(reader.GetString(0), checked((uint)reader.GetInt64(1)));
+            return new GcCurrentAchievementState(true, values);
+        }
+    }
+
     public IReadOnlyList<UnlockEvent> GetPending(string sourceKey) =>
         ReadEvents("WHERE source_key=$src AND delivered_ms IS NULL ORDER BY observed_ms,event_id",
             sourceKey, 1000);

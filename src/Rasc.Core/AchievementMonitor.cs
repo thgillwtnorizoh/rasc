@@ -14,8 +14,10 @@ public sealed class AchievementMonitor : IAsyncDisposable
     private FileSystemWatcher? _watcher;
     private CancellationTokenSource? _cancel;
     private Task? _runner;
+    private GcCurrentAchievementState? _lastSignaledState;
 
     public event EventHandler<UnlockEvent>? UnlockDetected;
+    public event EventHandler<GcCurrentAchievementState>? CurrentStateChanged;
     public event EventHandler<string>? StatusChanged;
 
     public AchievementMonitor(GcFileSource source, UnlockEventStore store, TimeSpan? interval = null)
@@ -77,6 +79,16 @@ public sealed class AchievementMonitor : IAsyncDisposable
                 if (read.Status == ReadStatus.Valid && read.Snapshot is not null)
                 {
                     _store.AcceptSnapshot(_source.SourceKey, read.Snapshot, DateTimeOffset.UtcNow);
+                    // Only publish a source-confirmed state AFTER the SQLite transaction.
+                    // No callback on missing/invalid reads; retain the last valid snapshot.
+                    var committed = new GcCurrentAchievementState(true,
+                        read.Snapshot.Achievements.ToDictionary(
+                            pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
+                    if (_lastSignaledState is null || !SameAchievements(_lastSignaledState, committed))
+                    {
+                        _lastSignaledState = committed;
+                        CurrentStateChanged?.Invoke(this, committed);
+                    }
                     foreach (var evt in _store.GetPending(_source.SourceKey))
                     {
                         if (ct.IsCancellationRequested) break;
@@ -100,6 +112,13 @@ public sealed class AchievementMonitor : IAsyncDisposable
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
         }
     }
+
+    private static bool SameAchievements(GcCurrentAchievementState left,
+        GcCurrentAchievementState right) =>
+        left.HasValidSnapshot == right.HasValidSnapshot &&
+        left.Achievements.Count == right.Achievements.Count &&
+        left.Achievements.All(pair =>
+            right.Achievements.TryGetValue(pair.Key, out uint value) && value == pair.Value);
 
     public async ValueTask DisposeAsync()
     {
