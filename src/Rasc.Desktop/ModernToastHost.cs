@@ -24,6 +24,14 @@ internal sealed class ModernToastHost : IDisposable
     private readonly DispatcherTimer _holdWake;
     private readonly DispatcherTimer _batchWake;
     private readonly DispatcherTimer _anchorWake;
+    // Independent wall-clock watchdog while any wave/batch is outstanding.
+    // Owner still saw second waves stalled until another event after C02's
+    // render-independent WPF DispatcherTimer fix; ThreadPool timer posts a
+    // message even if CompositionTarget/DispatcherTimer ticks are throttled.
+    private readonly System.Threading.Timer _independentWake;
+    private readonly Dispatcher _dispatcher;
+    private bool _watchdogArmed;
+    private TimeSpan? _batchDueAt;
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private TimeSpan? _lastRenderTime;
     private TimeSpan? _scheduledWakeAt;
@@ -37,6 +45,21 @@ internal sealed class ModernToastHost : IDisposable
 
     internal ModernToastHost(Dispatcher dispatcher)
     {
+        _dispatcher = dispatcher;
+        _independentWake = new System.Threading.Timer(_ =>
+        {
+            if (_disposed) return;
+            try
+            {
+                if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+                    _ = dispatcher.BeginInvoke(
+                        new Action(OnIndependentWake), DispatcherPriority.Normal);
+            }
+            catch (InvalidOperationException)
+            {
+                // Dispatcher shutting down; never run WPF work on the timer thread.
+            }
+        }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _holdWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher);
         _holdWake.Tick += OnHoldWake;
         // Coalesce events emitted in one GT-610 reconciliation/burst so that
@@ -116,7 +139,9 @@ internal sealed class ModernToastHost : IDisposable
         else if (_schedule.ActiveCount == 0 && !_batchWake.IsEnabled)
         {
             _batchWake.Start();
+            _batchDueAt = _clock.Elapsed + _batchWake.Interval;
         }
+        ArmWatchdogIfNeeded();
         // Full / past-window live arrivals remain strictly FIFO in the next
         // automatic wave; previews keep established immutable-wave behavior.
     }
@@ -171,9 +196,39 @@ internal sealed class ModernToastHost : IDisposable
     private void OnBatchWake(object? sender, EventArgs args)
     {
         _batchWake.Stop();
+        _batchDueAt = null;
         if (_schedule.ActiveCount == 0 && _schedule.WaitingCount > 0)
             _schedule.AlignPendingWaveStart(_clock.Elapsed);
         Tick();
+    }
+
+    private void OnIndependentWake()
+    {
+        if (_disposed) return;
+        // Source events can wake the WPF dispatcher even if its timer message
+        // has been suppressed while a fullscreen game owns the display.
+        // Never open the partial first wave before the 45ms admission deadline.
+        if (_batchWake.IsEnabled && _schedule.ActiveCount == 0 &&
+            _batchDueAt is { } due && _clock.Elapsed >= due)
+        {
+            OnBatchWake(null, EventArgs.Empty);
+        }
+        else if (!_batchWake.IsEnabled)
+        {
+            Tick();
+        }
+    }
+
+    private void ArmWatchdogIfNeeded()
+    {
+        if (_disposed) return;
+        bool needed = !_schedule.IsIdle || _batchWake.IsEnabled;
+        if (needed == _watchdogArmed) return;
+        _watchdogArmed = needed;
+        var cadence = TimeSpan.FromMilliseconds(250);
+        _independentWake.Change(
+            needed ? cadence : Timeout.InfiniteTimeSpan,
+            needed ? cadence : Timeout.InfiniteTimeSpan);
     }
 
     private void OnRendering(object? sender, EventArgs args)
@@ -315,12 +370,15 @@ internal sealed class ModernToastHost : IDisposable
         // WPF compositor may not render while fullscreen CS:GO is active;
         // timer-driven transitions must still retire and present EVERY wave.
         ScheduleNextTransitionWake();
+        ArmWatchdogIfNeeded();
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _independentWake.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _independentWake.Dispose();
         StopRendering();
         _holdWake.Stop();
         _batchWake.Stop();
