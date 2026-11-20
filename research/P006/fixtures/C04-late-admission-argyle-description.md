@@ -30,6 +30,8 @@ The owner supplied four images in this conversation: a tightly cropped **The Arg
 - V2: reference-length Argyle description → two-line wrapping with y10/y26, 16-unit line height, max 2 lines and ellipsis for overflow.
 - V3: font profile changes recalculate wrap without altering card 283×70 geometry.
 - WPF: actual visible 1→2→3 cards across distinct enqueue times; 4th appears later without a fifth unlock; first cue once, replacement cue once.
+- WPF-STALLED: after first three live cards settle, remove both standard `DispatcherTimer` handlers and unsubscribe WPF composition rendering for the hold period. An independent **ThreadPool timer posting to the dispatcher** must still make the queued fourth visible at the expected wave boundary, with no fifth event. This is a reproducible robustness test, not evidence of the exact user's earlier scheduler stall.
+- WPF-SOURCE-BOUNDS: the watchdog is active only while a batch/wave is outstanding; it never edits game data, decides what is earned or overrides the scheduler's monotonic deadlines. All WPF updates still execute on the UI dispatcher.
 - Regression: preserve all previous WPF and Core tests, 167-row CSV, artifact build, original CodePen rare-glow screenshot gate.
 
 ## Verification boundary
