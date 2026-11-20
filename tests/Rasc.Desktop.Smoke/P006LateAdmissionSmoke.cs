@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -81,6 +82,12 @@ internal static class P006LateAdmissionSmoke
                             if (cueCount != 1)
                                 throw new InvalidOperationException(
                                     "Late live joins must not replay the original audio cue.");
+                            // Owner reports that queued waves remained invisible
+                            // until another GC write even after prior WPF timer
+                            // correction. Disable BOTH WPF timer callbacks and
+                            // Rendering during the hold; ThreadPool watchdog
+                            // must wake the wave without another award.
+                            DetachWpfWakeCallbacks(host);
                             stage = 5;
                             break;
                         case 5 when ms >= 8400:
@@ -146,6 +153,27 @@ internal static class P006LateAdmissionSmoke
             ticker?.Stop();
             host?.Dispose();
         }
+    }
+
+    private static void DetachWpfWakeCallbacks(ModernToastHost host)
+    {
+        const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        var type = typeof(ModernToastHost);
+        foreach (string prefix in new[] { "Hold", "Anchor" })
+        {
+            string field = prefix == "Hold" ? "_holdWake" : "_anchorWake";
+            var timer = (DispatcherTimer)(type.GetField(field, flags)?.GetValue(host)
+                ?? throw new InvalidOperationException(field + " missing."));
+            var callback = type.GetMethod("On" + prefix + "Wake", flags)
+                ?? throw new InvalidOperationException("On" + prefix + "Wake missing.");
+            var handler = (EventHandler)Delegate.CreateDelegate(
+                typeof(EventHandler), host, callback);
+            timer.Tick -= handler;
+            timer.Stop();
+        }
+        var stop = type.GetMethod("StopRendering", flags)
+            ?? throw new InvalidOperationException("StopRendering missing.");
+        stop.Invoke(host, null);
     }
 
     private static void AssertDescriptionLayout()
