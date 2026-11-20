@@ -26,6 +26,8 @@ internal static class Program
             return AchievementLibrarySmoke.Run();
         if (args.Length == 1 && args[0] == "p006-live-toasts")
             return P006LiveToastSmoke.Run();
+        if (args.Length == 1 && args[0] == "p006-late-admission")
+            return P006LateAdmissionSmoke.Run();
 
         if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
         {
