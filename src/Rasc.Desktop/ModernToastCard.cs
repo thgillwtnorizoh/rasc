@@ -158,6 +158,8 @@ internal sealed class ModernToastCard : UserControl
                 _description.FontFamily = PopupFontResolver.Resolve(
                     PopupFontChoice.SansSerif, classic: false);
         }
+        if (_description is not null && _appliedTypography is { } current)
+            ArrangeDescriptionForMeasuredLineCount(ModernTypographySpec.For(current));
     }
 
     /// <summary>
