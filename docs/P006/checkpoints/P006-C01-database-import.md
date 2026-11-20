@@ -5,7 +5,7 @@
 **Status:** **VERIFIED CHECKPOINT** — source-data parity, development core tests and Windows CI. **NOT** historical unlock-rule validation, completed P006, owner physical Windows qualification, or independent second-actor production QA.
 
 **Starting SHA:** `1f6817db0431eae926a90cf70cd8080fc474f3c8` (latest P006 source research PR #42 parent; `main` remains older).  
-**Published production source / exact Windows CI-tested SHA:** `c9cb1506368b1f0edc24360e66d2b445523f1502`.  
+**Published production source / exact Windows CI-tested SHA:** `4b480612c5753e8f89b42282b561b8818440bc80`.  
 **Checkpoint publication:** added after the tested source commit; see GitHub file history/PR head for its documentation-only commit SHA.  
 **PR branch:** `feature/p006-c01-curated-definition-import`; unmerged draft PR #43. No force-push and no main-branch changes.
 
@@ -28,14 +28,14 @@
 
 ## Tests
 
-**Exact tested SHA:** `c9cb1506368b1f0edc24360e66d2b445523f1502`  
-**Environment:** GitHub Actions `windows-latest`, .NET 10, [successful run #44650297909](https://github.com/thgillwtnorizoh/rasc/actions/runs/44650297909), workflow run number 99.
+**Exact tested SHA:** `4b480612c5753e8f89b42282b561b8818440bc80`  
+**Environment:** GitHub Actions `windows-latest`, .NET 10, [successful run #44651289758](https://github.com/thgillwtnorizoh/rasc/actions/runs/44651289758), workflow run for tested head.
 
-- `dotnet test tests/Rasc.Core.Tests/Rasc.Core.Tests.csproj --configuration Release --logger "trx;LogFileName=rasc.trx"`: **206 passed / 0 failed / 0 skipped**.
+- `dotnet test tests/Rasc.Core.Tests/Rasc.Core.Tests.csproj --configuration Release --logger "trx;LogFileName=rasc.trx"`: **207 passed / 0 failed / 0 skipped**.
 - `dotnet build src/Rasc.Desktop/Rasc.Desktop.csproj --configuration Release --no-incremental`: **PASS**.
-- Existing WPF real-window profile smoke: **10/10 invocation gates PASS**, covering rare glow, classic/modern transitions, stack, progress, sound/settings and installation recovery. These are regression gates, not direct achievement-library tests.
-- Chrome CodePen reference capture and PNG upload: **PASS**.
-- `dotnet publish src/Rasc.Desktop/Rasc.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/Rasc-Windows-x64 -p:PublishSingleFile=false`: **PASS**. [Windows artifact ID 14590342444](https://github.com/thgillwtnorizoh/rasc/actions/runs/44650297909/artifacts/14590342444).
+- Explicit embedded-resource fallback assertion: **PASS**, 167 definitions with 63 rare / 104 normal.\n- Existing WPF real-window profile smoke: **10/10 invocation gates PASS**, covering rare glow, classic/modern transitions, stack, progress, sound/settings and installation recovery. These are regression gates, not direct achievement-library tests.
+- Chrome CodePen reference capture and PNG upload: **PASS**.\n- Published-package contract: **PASS**, `artifacts/Rasc-Windows-x64/Data/achievement-definitions.v0.2.csv` exists with exactly 167 data rows (editable without recompiling).
+- `dotnet publish src/Rasc.Desktop/Rasc.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/Rasc-Windows-x64 -p:PublishSingleFile=false`: **PASS**. [Windows artifact ID 14590223832](https://github.com/thgillwtnorizoh/rasc/actions/runs/44651289758/artifacts/14590223832).
 - **NOT RUN:** local .NET SDK in this container (unavailable); direct owner Windows/game runtime; separate independent tester of compiled production; original 2023 CS:GO rule/Steam-schema verification. CI emitted GitHub action Node 20 deprecation notices, not a .NET failure.
 
 ## Coverage gained / remaining
