@@ -1,11 +1,11 @@
 namespace Rasc.Core;
 
 /// <summary>
-/// P003-C02 owner-target NORMAL desktop achievement waves. All events admitted
-/// while idle form one bounded wave of up to three notifications. Events earned
-/// during an active wave wait until that wave has fully returned to the common
-/// off-screen origin. This is an ENGINEERING reading of owner-observed motion,
-/// not a claim about every original Steam notification type.
+/// Bounded 1-3 card Steam-like notification stack. Pre-existing preview wave
+/// admission stays immutable (historical P003 behavior). P006-C04 live GC
+/// awards may optionally join a still-visible, not-full stack for a bounded
+/// window; otherwise FIFO overflow becomes the next wave. This is an
+/// owner-requested ENGINEERING correction, not a claimed Steam internal rule.
 /// </summary>
 public sealed class ModernToastScheduler
 {
@@ -17,11 +17,16 @@ public sealed class ModernToastScheduler
     public static readonly TimeSpan Hold = TimeSpan.FromMilliseconds(5000);
     public static readonly TimeSpan Exit = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan Lifetime = Entrance + Hold + Exit;
+    // A second GC file rewrite may arrive after the first 45ms initial batch.
+    // Cap the joining window to avoid indefinitely extending a busy stack.
+    public static readonly TimeSpan LiveLateAdmissionWindow = TimeSpan.FromSeconds(3);
 
     private readonly List<UnlockEvent> _wave = [];
+    private readonly List<TimeSpan> _memberStart = [];
     private readonly Queue<UnlockEvent> _waiting = new();
     private readonly HashSet<string> _known = new(StringComparer.Ordinal);
     private TimeSpan _waveStarted;
+    private TimeSpan _holdEndsAt;
     private TimeSpan _previous;
     private bool _clockStarted;
 
@@ -29,13 +34,11 @@ public sealed class ModernToastScheduler
     public int WaitingCount => _waiting.Count;
     public bool IsIdle => _wave.Count == 0 && _waiting.Count == 0;
     public bool IsAnimating => _wave.Count != 0 &&
-        (_previous - _waveStarted < Entrance ||
-         _previous - _waveStarted >= Entrance + Hold);
+        (_previous < _memberStart[^1] + Entrance ||
+         _previous >= _holdEndsAt);
 
     public TimeSpan? NextHoldDeadline =>
-        _wave.Count > 0 && !IsAnimating
-            ? _waveStarted + Entrance + Hold
-            : null;
+        _wave.Count > 0 && !IsAnimating ? _holdEndsAt : null;
 
     /// <summary>
     /// Next REQUIRED scheduler transition. The WPF compositor is permitted to
@@ -47,11 +50,11 @@ public sealed class ModernToastScheduler
         get
         {
             if (_wave.Count == 0) return null;
-            var elapsed = _previous - _waveStarted;
-            if (elapsed < Entrance) return _waveStarted + Entrance;
-            if (elapsed < Entrance + Hold) return _waveStarted + Entrance + Hold;
-            if (elapsed < Lifetime) return _waveStarted + Lifetime;
-            return _previous; // caller should immediately Advance at overdue boundary
+            if (_previous < _memberStart[^1] + Entrance)
+                return _memberStart[^1] + Entrance;
+            if (_previous < _holdEndsAt) return _holdEndsAt;
+            if (_previous < _holdEndsAt + Exit) return _holdEndsAt + Exit;
+            return _previous; // already overdue; caller advances immediately
         }
     }
 
@@ -63,6 +66,32 @@ public sealed class ModernToastScheduler
             throw new ArgumentException("Stable event ID required.", nameof(evt));
         if (!_known.Add(evt.EventId)) return false;
         _waiting.Enqueue(evt);
+        return true;
+    }
+
+    /// <summary>
+    /// Opt-in for source-confirmed LIVE awards arriving in separate GC writes
+    /// while the first wave is still visible. Does not disturb the already
+    /// rendered card, and may extend the common hold so the new card gets its
+    /// full entrance + hold. A non-qualifying event must use normal Enqueue.
+    /// Preview/scheduler baseline tests intentionally use normal Enqueue.
+    /// </summary>
+    public bool TryAdmitLiveDuringHold(UnlockEvent evt, TimeSpan now)
+    {
+        ArgumentNullException.ThrowIfNull(evt);
+        if (string.IsNullOrWhiteSpace(evt.EventId))
+            throw new ArgumentException("Stable event ID required.", nameof(evt));
+        if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
+            throw new ArgumentOutOfRangeException(nameof(now));
+        if (_wave.Count == 0 || _wave.Count >= Capacity || _waiting.Count != 0 ||
+            now >= _waveStarted + LiveLateAdmissionWindow ||
+            now >= _holdEndsAt || _known.Contains(evt.EventId))
+            return false;
+
+        _known.Add(evt.EventId);
+        _wave.Add(evt);
+        _memberStart.Add(now);
+        _holdEndsAt = now + Entrance + Hold;
         return true;
     }
 
@@ -98,44 +127,49 @@ public sealed class ModernToastScheduler
             if (_wave.Count == 0 && _waiting.Count > 0)
             {
                 _waveStarted = cursor;
+                _holdEndsAt = _waveStarted + Entrance + Hold;
                 while (_wave.Count < Capacity && _waiting.Count > 0)
+                {
                     _wave.Add(_waiting.Dequeue());
+                    _memberStart.Add(_waveStarted);
+                }
             }
             if (_wave.Count == 0) break;
 
-            var deadline = _waveStarted + Lifetime;
+            var deadline = _holdEndsAt + Exit;
             if (deadline > now) break;
             _wave.Clear();
+            _memberStart.Clear();
             cursor = deadline;
         }
 
         _previous = now;
         if (_wave.Count == 0) return [];
 
-        var elapsed = now - _waveStarted;
-        var stage = elapsed < Entrance ? ModernToastStage.Entering :
-            elapsed < Entrance + Hold ? ModernToastStage.Showing :
-            ModernToastStage.Exiting;
-        // Phase fraction is a *visibility* fraction. Every member moves
-        // from y=0 (completely below work-area bottom) to its assigned slot,
-        // then returns to the SAME origin. There is no independent entry point.
-        var fraction = stage switch
-        {
-            ModernToastStage.Entering =>
-                Math.Clamp(elapsed.TotalMilliseconds / Entrance.TotalMilliseconds, 0, 1),
-            ModernToastStage.Exiting =>
-                Math.Clamp((Lifetime - elapsed).TotalMilliseconds / Exit.TotalMilliseconds, 0, 1),
-            _ => 1d
-        };
+        var exiting = now >= _holdEndsAt;
+        var exitFraction = exiting
+            ? Math.Clamp((_holdEndsAt + Exit - now).TotalMilliseconds /
+                         Exit.TotalMilliseconds, 0, 1)
+            : 1d;
         var count = _wave.Count;
-        var frames = new List<ModernToastFrame>(count);
-        // Oldest at top, newest at bottom. Render top-to-bottom; bottom window
-        // is created last so it naturally overlaps the stack as cards emerge.
-        for (var i = 0; i < count; i++)
+        var frames = new ModernToastFrame[count];
+        // An added live card rises from below as the existing contiguous stack
+        // smoothly shifts upward. Each member retains its original entrance
+        // clock, so an existing popup never slides in again or replays a cue.
+        double occupiedUnits = 0;
+        for (int i = count - 1; i >= 0; i--)
         {
-            var slot = count - i - 1;
-            frames.Add(new ModernToastFrame(_wave[i], slot, count, stage,
-                -(slot + 1) * CardHeight * fraction, fraction));
+            var age = now - _memberStart[i];
+            var entry = Math.Clamp(age.TotalMilliseconds /
+                Entrance.TotalMilliseconds, 0, 1);
+            occupiedUnits += entry;
+            var phase = exiting ? ModernToastStage.Exiting
+                : entry < 1 ? ModernToastStage.Entering
+                : ModernToastStage.Showing;
+            var visibility = exiting ? exitFraction : entry;
+            frames[i] = new ModernToastFrame(
+                _wave[i], count - i - 1, count, phase,
+                -CardHeight * occupiedUnits * exitFraction, visibility);
         }
         return frames;
     }
@@ -143,10 +177,12 @@ public sealed class ModernToastScheduler
     public void Clear()
     {
         _wave.Clear();
+        _memberStart.Clear();
         _waiting.Clear();
         _known.Clear();
         _clockStarted = false;
         _waveStarted = TimeSpan.Zero;
+        _holdEndsAt = TimeSpan.Zero;
         _previous = TimeSpan.Zero;
     }
 }
