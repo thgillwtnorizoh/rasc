@@ -128,6 +128,19 @@ public sealed class CuratedAchievementCatalogTests
     }
 
     [Fact]
+    public void EmbeddedFallbackContainsTheFullOwnerAcceptedCatalog()
+    {
+        using var stream = typeof(CuratedAchievementCatalog).Assembly.GetManifestResourceStream(
+            "Rasc.Core.Data.achievement-definitions.v0.2.csv");
+        Assert.NotNull(stream);
+        using var reader = new StreamReader(stream!);
+        var embedded = CuratedAchievementCatalog.Parse(reader.ReadToEnd(), "embedded-test");
+        Assert.Equal(167, embedded.Entries.Count);
+        Assert.Equal(63, embedded.Entries.Count(e => e.Rarity == CuratedRarity.Rare));
+        Assert.Equal(104, embedded.Entries.Count(e => e.Rarity == CuratedRarity.Normal));
+    }
+
+    [Fact]
     public void DoesNotCarryAnyBundledOriginalValveDisplayTextOrAwardLogic()
     {
         var catalog = CuratedAchievementCatalog.LoadDefault();
