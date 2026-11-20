@@ -84,6 +84,30 @@ public sealed class ModernToastWaveTests
     }
 
     [Fact]
+    public void DeadlineDrivenWavesFlushAllFiveWithoutAnyLaterUnlock()
+    {
+        var schedule = new ModernToastScheduler();
+        for (int i = 1; i <= 3; i++) Assert.True(schedule.Enqueue(E(i)));
+        var first = schedule.Advance(TimeSpan.Zero);
+        Assert.Equal(3, first.Count);
+        Assert.Equal(TimeSpan.FromMilliseconds(300), schedule.NextTransitionDeadline);
+        // Two events arrive during the first wave, then the game goes quiet.
+        Assert.True(schedule.Enqueue(E(4)));
+        Assert.True(schedule.Enqueue(E(5)));
+        schedule.Advance(TimeSpan.FromMilliseconds(300));
+        Assert.Equal(TimeSpan.FromMilliseconds(5300), schedule.NextTransitionDeadline);
+        schedule.Advance(TimeSpan.FromMilliseconds(5300));
+        Assert.Equal(TimeSpan.FromMilliseconds(5600), schedule.NextTransitionDeadline);
+        var second = schedule.Advance(TimeSpan.FromMilliseconds(5600));
+        Assert.Equal(new[] { "wave-event-4", "wave-event-5" },
+            second.Select(frame => frame.Event.EventId));
+        Assert.Equal(TimeSpan.FromMilliseconds(5900), schedule.NextTransitionDeadline);
+        schedule.Advance(TimeSpan.FromMilliseconds(11200));
+        Assert.True(schedule.IsIdle);
+        Assert.Null(schedule.NextTransitionDeadline);
+    }
+
+    [Fact]
     public void AllWaveBacklogExpiresAtExactDeadlinesAcrossLargeJumps()
     {
         var s = new ModernToastScheduler();
