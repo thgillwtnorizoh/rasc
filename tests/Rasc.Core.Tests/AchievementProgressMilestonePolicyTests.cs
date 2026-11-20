@@ -38,7 +38,7 @@ public sealed class AchievementProgressMilestonePolicyTests
     {
         Assert.Equal(25, AchievementProgressMilestonePolicy.HighestNewMilestone(
             0, 1, 3, true));
-        Assert.Equal(75, AchievementProgressMilestonePolicy.HighestNewMilestone(
+        Assert.Equal(50, AchievementProgressMilestonePolicy.HighestNewMilestone(
             1, 2, 3, true));
         Assert.Null(AchievementProgressMilestonePolicy.HighestNewMilestone(
             int.MaxValue - 1, int.MaxValue, int.MaxValue, true));
