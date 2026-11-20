@@ -1,0 +1,59 @@
+<Window x:Class="Rasc.Desktop.AchievementLibraryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RASC — CS:GO Achievement Library" Width="1110" Height="730"
+        MinWidth="720" MinHeight="410" WindowStartupLocation="CenterOwner">
+  <Grid Margin="18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel Grid.Row="0">
+      <TextBlock FontSize="22" FontWeight="SemiBold" Text="CS:GO achievements"/>
+      <TextBlock x:Name="SummaryText" Margin="0,5,0,0" FontWeight="SemiBold"
+                 Text="No valid GC snapshot yet — existing achievements are unknown."/>
+      <TextBlock Margin="0,4,0,0" FontSize="11" Foreground="Gray"
+                 Text="Curated RASC v0.2 rarity, not official Steam rarity. Read-only GC state; no automatic awards."/>
+    </StackPanel>
+    <DockPanel Grid.Row="1" Margin="0,14,0,10" LastChildFill="True">
+      <Button DockPanel.Dock="Right" Content="Reload files" Padding="14,7"
+              Click="Reload_Click" ToolTip="Re-read editable rarity CSV and local CS:GO localization."/>
+      <ComboBox DockPanel.Dock="Right" x:Name="StateFilterBox" Width="136"
+                Margin="9,0,10,0" SelectedIndex="0"
+                SelectionChanged="Filter_Changed">
+        <ComboBoxItem Content="All states" Tag="All"/>
+        <ComboBoxItem Content="Earned" Tag="Earned"/>
+        <ComboBoxItem Content="Locked" Tag="Locked"/>
+        <ComboBoxItem Content="Unknown" Tag="Unknown"/>
+      </ComboBox>
+      <TextBox x:Name="SearchBox" Padding="8,6" MinHeight="30"
+               TextChanged="Filter_Changed"
+               ToolTip="Search by name, description or API ID."/>
+    </DockPanel>
+    <TextBlock x:Name="TextSourceText" Grid.Row="2" Margin="0,0,0,9"
+               FontSize="11" Foreground="Gray" TextWrapping="Wrap"
+               Text="Local CS:GO text not loaded."/>
+    <DataGrid Grid.Row="3" x:Name="CatalogGrid" AutoGenerateColumns="False"
+              IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+              SelectionMode="Single" HeadersVisibility="Column"
+              EnableRowVirtualization="True" EnableColumnVirtualization="True"
+              VirtualizingPanel.IsVirtualizing="True"
+              VirtualizingPanel.VirtualizationMode="Recycling"
+              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="State" Width="90" Binding="{Binding StateLabel}"/>
+        <DataGridTextColumn Header="Achievement" Width="200" Binding="{Binding Name}"/>
+        <DataGridTextColumn Header="Rarity" Width="95" Binding="{Binding RarityLabel}"/>
+        <DataGridTextColumn Header="Description" Width="310" Binding="{Binding Description}"/>
+        <DataGridTextColumn Header="Unlocked (local)" Width="155" Binding="{Binding UnlockedLabel}"/>
+        <DataGridTextColumn Header="API ID" Width="225" Binding="{Binding ApiId}"/>
+      </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock x:Name="SourceStatusText" Grid.Row="4" Margin="0,10,0,0"
+               TextWrapping="Wrap" Foreground="Gray" FontSize="11"
+               Text="GC status unavailable. Last valid state is retained if the source disappears."/>
+  </Grid>
+</Window>
