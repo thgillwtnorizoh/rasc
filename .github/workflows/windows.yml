@@ -45,6 +45,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Queued Modern wave sound re-admission WPF smoke failed" }
           dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- installation-recovery
           if ($LASTEXITCODE -ne 0) { throw "Steam/GC missing-file recovery WPF smoke failed" }
+      - name: P006 actual WPF achievement-library browse and filter smoke
+        timeout-minutes: 3
+        run: dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- achievement-library
       - name: Capture exact CodePen fixture in installed Chrome
         shell: pwsh
         run: |
