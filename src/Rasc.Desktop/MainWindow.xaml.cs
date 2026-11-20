@@ -142,6 +142,8 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(_localDirectory);
             File.WriteAllText(Path.Combine(_localDirectory, "last-source.txt"), source.FilePath);
             _monitor = new AchievementMonitor(source, _store);
+            _monitor.CurrentStateChanged += (_, state) =>
+                Dispatcher.BeginInvoke(new Action(() => OnCommittedLibrarySnapshot(state)));
             _monitor.UnlockDetected += (_, item) => Dispatcher.Invoke(() =>
             {
                 _history.Insert(0, new UnlockRow(item.AchievementId,
@@ -155,7 +157,11 @@ public partial class MainWindow : Window
                 else if (destination == NotificationProfile.Modern)
                     QueuePresentation(destination, () => _modernToasts.Enqueue(item));
             });
-            _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(() => StatusText.Text = message);
+            _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                StatusText.Text = message;
+                _libraryWindow?.SetSourceStatus(message);
+            }));
             await _monitor.StartAsync();
             StartButton.IsEnabled = false;
             PathBox.IsEnabled = false;
@@ -180,6 +186,8 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = true;
         PathBox.IsEnabled = true;
         StatusText.Text = "Monitoring stopped.";
+        _libraryWindow?.SetSourceStatus(
+            "Monitoring stopped. Showing last successfully committed GC state (if any).");
     }
 
     private async void OnClosing(object? sender, CancelEventArgs e)
