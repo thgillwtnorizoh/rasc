@@ -51,6 +51,9 @@ jobs:
       - name: P006 live named-image toast burst regression (3 plus 2 without later event)
         timeout-minutes: 3
         run: dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- p006-live-toasts
+      - name: P006 late source award admission and two-line description WPF smoke
+        timeout-minutes: 3
+        run: dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- p006-late-admission
       - name: Capture exact CodePen fixture in installed Chrome
         shell: pwsh
         run: |
