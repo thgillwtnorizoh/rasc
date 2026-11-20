@@ -162,8 +162,14 @@
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
       </Grid.RowDefinitions>
-      <TextBlock Grid.Row="0" Margin="0,0,0,8" FontWeight="SemiBold"
-                 Text="Recorded unlock events (this companion's history)"/>
+      <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="True">
+        <Button DockPanel.Dock="Right" x:Name="AchievementLibraryButton"
+                Content="Browse achievements" Padding="12,5"
+                Click="BrowseAchievements_Click"
+                ToolTip="Read-only library of curated 167 achievements and the last valid GC unlock state."/>
+        <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
+                   Text="Recorded unlock events (this companion's history)"/>
+      </DockPanel>
       <ListView Grid.Row="1" x:Name="RecentList">
         <ListView.View>
           <GridView>
