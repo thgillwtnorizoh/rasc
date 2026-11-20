@@ -117,6 +117,22 @@ jobs:
           if-no-files-found: warn
       - name: Publish self-contained Windows x64
         run: dotnet publish src/Rasc.Desktop/Rasc.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/Rasc-Windows-x64 -p:PublishSingleFile=false
+      - name: Verify published editable achievement definitions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $file = 'artifacts/Rasc-Windows-x64/Data/achievement-definitions.v0.2.csv'
+          if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+            throw "Editable achievement catalog missing from the published Windows package: $file"
+          }
+          $records = @(Get-Content -LiteralPath $file | Where-Object {
+            $_.Trim() -and -not $_.TrimStart().StartsWith('#')
+          })
+          if ($records.Count -ne 168) {
+            throw "Expected one header and 167 achievement definition records; found $($records.Count)"
+          }
+          Write-Output "Published editable P006 v0.2 catalog verified: 167 rows."
+
       - name: Upload Windows application
         uses: actions/upload-artifact@v4
         with:
