@@ -15,6 +15,9 @@ namespace Rasc.Desktop;
 internal sealed class ModernToastHost : IDisposable
 {
     private readonly ModernToastScheduler _schedule = new();
+    // One owner of FIFO grouping and source-receipt deadlines; presentation
+    // never assigns the arrival time of a queued award to its animation clock.
+    private readonly ModernAchievementWaveQueue _waveQueue = new();
     private readonly ModernWaveCueGate _cueGate = new();
     // ONE shared topmost window represents the full Modern wave, rather than
     // one DWM-composited HWND per card (the source of inter-card seams).
@@ -31,7 +34,7 @@ internal sealed class ModernToastHost : IDisposable
     private readonly System.Threading.Timer _independentWake;
     private readonly Dispatcher _dispatcher;
     private bool _watchdogArmed;
-    private TimeSpan? _batchDueAt;
+    private DateTimeOffset? _collectionWakeAt;
     private readonly ClassicAnimationFrameGate _frameGate = new();
     private TimeSpan? _lastRenderTime;
     private TimeSpan? _scheduledWakeAt;
@@ -62,12 +65,11 @@ internal sealed class ModernToastHost : IDisposable
         }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _holdWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher);
         _holdWake.Tick += OnHoldWake;
-        // Coalesce events emitted in one GT-610 reconciliation/burst so that
-        // three adjacent awards can begin in the SAME wave. This 45ms delay
-        // is an ENGINEERING value; it is not an original Steam constant.
+        // Strict fixed 800ms collection period from the first RASC source
+        // signal, not 45ms from an arbitrary UI dispatcher callback.
         _batchWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
         {
-            Interval = TimeSpan.FromMilliseconds(45)
+            Interval = ModernAchievementWaveQueue.CollectionWindow
         };
         _batchWake.Tick += OnBatchWake;
         _anchorWake = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
@@ -79,7 +81,8 @@ internal sealed class ModernToastHost : IDisposable
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
-    internal bool IsIdle => _schedule.IsIdle && _window is null && !_batchWake.IsEnabled;
+    internal bool IsIdle => _schedule.IsIdle && _waveQueue.PendingWaveCount == 0 &&
+        _window is null && !_batchWake.IsEnabled;
 
     internal void SetSettings(ClassicPresentationSettings settings)
     {
@@ -88,7 +91,7 @@ internal sealed class ModernToastHost : IDisposable
         _fpsCap = valid.AnimationFps;
         _sizePercent = valid.PopupSizePercent;
         _frameGate.Reset();
-        if (!_batchWake.IsEnabled) Tick(); // only relayout, never restart a wave
+        Tick(); // only relayout or advance an actually completed wave
     }
 
     internal void ConfigureCustomization(PopupFontChoice fontChoice,
@@ -99,7 +102,7 @@ internal sealed class ModernToastHost : IDisposable
         _typography = Enum.IsDefined(typography)
             ? typography : ModernTypographyProfile.RascAccepted;
         _playCue = playCue;
-        if (!_batchWake.IsEnabled) Tick(); // restyle existing text; no new event
+        Tick(); // restyle without altering collection deadline or active wave
     }
 
     internal void Enqueue(UnlockEvent evt) =>
@@ -107,43 +110,17 @@ internal sealed class ModernToastHost : IDisposable
 
     internal void Enqueue(UnlockEvent evt, ResolvedAchievementToast toast) =>
         Enqueue(evt, ModernToastContent.Unlock(
-            toast.Name, toast.Description, toast.IsRare, toast.IconJpeg),
-            allowLiveLateAdmission: true);
+            toast.Name, toast.Description, toast.IsRare, toast.IconJpeg));
 
-    private void Enqueue(UnlockEvent evt, ModernToastContent content,
-        bool allowLiveLateAdmission = false)
+    private void Enqueue(UnlockEvent evt, ModernToastContent content)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (_schedule.IsIdle && !_batchWake.IsEnabled)
-            Tick(); // rebase monotonic time before first arrival
-
-        // A later GC file write may follow the first award by hundreds of
-        // milliseconds or seconds. The historical 45ms initial admission
-        // window alone could not group those live events. For REAL awards,
-        // join the still-visible stack if room remains, with each newcomer
-        // sliding in rather than freezing for a 5.6s next-wave wait.
-        bool hasActive = _schedule.ActiveCount > 0;
-        if (hasActive && allowLiveLateAdmission)
-            Tick(); // retire overdue wave before testing live admission
-
-        bool joined = allowLiveLateAdmission && hasActive &&
-            _schedule.TryAdmitLiveDuringHold(evt, _clock.Elapsed);
-        if (!joined && !_schedule.Enqueue(evt)) return;
+        if (!_waveQueue.Enqueue(evt)) return;
         _content.Add(evt.EventId, content);
-
-        if (joined)
-        {
-            Tick(); // show entrant immediately; preserve old card and cue
-        }
-        else if (_schedule.ActiveCount == 0 && !_batchWake.IsEnabled)
-        {
-            _batchWake.Start();
-            _batchDueAt = _clock.Elapsed + _batchWake.Interval;
-        }
-        ArmWatchdogIfNeeded();
-        // Full / past-window live arrivals remain strictly FIFO in the next
-        // automatic wave; previews keep established immutable-wave behavior.
+        // This never starts a wave before 800ms from the first SOURCE signal.
+        // Subsequent awards cannot enter an already started wave, even if it
+        // contains just one card. Overflow is immutable FIFO group order.
+        Tick();
     }
 
     internal void PreviewUnlock() =>
@@ -196,33 +173,20 @@ internal sealed class ModernToastHost : IDisposable
     private void OnBatchWake(object? sender, EventArgs args)
     {
         _batchWake.Stop();
-        _batchDueAt = null;
-        if (_schedule.ActiveCount == 0 && _schedule.WaitingCount > 0)
-            _schedule.AlignPendingWaveStart(_clock.Elapsed);
+        _collectionWakeAt = null;
         Tick();
     }
 
     private void OnIndependentWake()
     {
-        if (_disposed) return;
-        // Source events can wake the WPF dispatcher even if its timer message
-        // has been suppressed while a fullscreen game owns the display.
-        // Never open the partial first wave before the 45ms admission deadline.
-        if (_batchWake.IsEnabled && _schedule.ActiveCount == 0 &&
-            _batchDueAt is { } due && _clock.Elapsed >= due)
-        {
-            OnBatchWake(null, EventArgs.Empty);
-        }
-        else if (!_batchWake.IsEnabled)
-        {
-            Tick();
-        }
+        if (!_disposed) Tick();
     }
 
     private void ArmWatchdogIfNeeded()
     {
         if (_disposed) return;
-        bool needed = !_schedule.IsIdle || _batchWake.IsEnabled;
+        bool needed = !_schedule.IsIdle ||
+            _waveQueue.PendingWaveCount != 0 || _batchWake.IsEnabled;
         if (needed == _watchdogArmed) return;
         _watchdogArmed = needed;
         var cadence = TimeSpan.FromMilliseconds(250);
@@ -276,6 +240,27 @@ internal sealed class ModernToastHost : IDisposable
         _lastRenderTime = null;
     }
 
+    private void ScheduleCollectionWake()
+    {
+        // Only a completely idle presenter may start the next FIFO wave.
+        // Timers may wake late, but no event's presentation lifetime is
+        // advanced while it remains in the collection queue.
+        var next = _schedule.IsIdle ? _waveQueue.NextReadyAt : null;
+        if (next is null)
+        {
+            _batchWake.Stop();
+            _collectionWakeAt = null;
+            return;
+        }
+        if (_batchWake.IsEnabled && _collectionWakeAt == next) return;
+        _collectionWakeAt = next;
+        var remaining = next.Value - DateTimeOffset.UtcNow;
+        _batchWake.Interval = TimeSpan.FromMilliseconds(
+            Math.Clamp(Math.Ceiling(remaining.TotalMilliseconds), 1, 60000));
+        _batchWake.Stop();
+        _batchWake.Start();
+    }
+
     private void ScheduleNextTransitionWake()
     {
         var next = _schedule.NextTransitionDeadline;
@@ -311,11 +296,19 @@ internal sealed class ModernToastHost : IDisposable
     private void Tick()
     {
         if (_disposed) return;
-        // Before the first wave, avoid dispatch events from opening a partial
-        // wave before the short burst-collection timer has elapsed.
-        if (_batchWake.IsEnabled && _schedule.ActiveCount == 0) return;
-
-        var frames = _schedule.Advance(_clock.Elapsed);
+        var now = _clock.Elapsed;
+        // First retire the old wave. The next queued cohort is not allowed to
+        // inherit its historical end-time: its own animation starts NOW.
+        var frames = _schedule.Advance(now);
+        if (_schedule.IsIdle)
+        {
+            var ready = _waveQueue.TakeReady(DateTimeOffset.UtcNow);
+            if (ready is not null)
+            {
+                _schedule.BeginSealedWave(ready.Achievements, now);
+                frames = _schedule.Advance(now);
+            }
+        }
         // A queued replacement wave may be admitted on the SAME Tick that
         // retires its predecessor, without a frame-empty interval or a new
         // window. Cue identity therefore follows the presented wave, not HWND
@@ -334,7 +327,8 @@ internal sealed class ModernToastHost : IDisposable
                 _window.Close();
                 _window = null;
             }
-            if (_schedule.IsIdle) _content.Clear();
+            if (_schedule.IsIdle && _waveQueue.PendingWaveCount == 0)
+                _content.Clear();
         }
         else
         {
@@ -370,6 +364,7 @@ internal sealed class ModernToastHost : IDisposable
         // WPF compositor may not render while fullscreen CS:GO is active;
         // timer-driven transitions must still retire and present EVERY wave.
         ScheduleNextTransitionWake();
+        ScheduleCollectionWake();
         ArmWatchdogIfNeeded();
     }
 
@@ -392,5 +387,6 @@ internal sealed class ModernToastHost : IDisposable
         _window = null;
         _content.Clear();
         _schedule.Clear();
+        _waveQueue.Clear();
     }
 }
