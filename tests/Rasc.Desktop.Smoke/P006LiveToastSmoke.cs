@@ -102,18 +102,18 @@ internal static class P006LiveToastSmoke
                 try
                 {
                     var elapsed = clock.Elapsed.TotalMilliseconds;
-                    if (elapsed > 11000)
+                    if (elapsed > 13500)
                         throw new TimeoutException("Three-plus-two wave sequence stalled.");
-                    if (stage == 0 && elapsed > 800)
+                    if (stage == 0 && elapsed > 1550)
                     {
                         AssertWave(3, [1, 2, 3], imageRequired: true);
                         stage = 1;
                     }
-                    if (stage == 1 && elapsed > 6350)
+                    if (stage == 1 && elapsed > 7250)
                     {
                         AssertWave(2, [4, 5], imageRequired: true);
                         stage = 2;
-                        Console.WriteLine("PASS P006 live-format WPF: 3 then 2 FIFO, named text, artwork, rare wrapper, no additional unlock.");
+                        Console.WriteLine("PASS P006 sealed Modern waves: 800ms source collection, 3 then 2 FIFO, full presentation clock, text/art/rare, no sixth unlock.");
                         ticker.Stop();
                         freeze.Stop();
                         host.Dispose();
