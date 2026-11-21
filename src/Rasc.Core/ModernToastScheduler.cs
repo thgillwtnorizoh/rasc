@@ -96,6 +96,41 @@ public sealed class ModernToastScheduler
     }
 
     /// <summary>
+    /// Production-only entry: admit one COMPLETE, already sealed wave supplied
+    /// by ModernAchievementWaveQueue. All cards share one entrance/hold/exit
+    /// clock; no late arrivals can be appended to the active wave.
+    /// </summary>
+    public void BeginSealedWave(IReadOnlyList<UnlockEvent> awards, TimeSpan now)
+    {
+        ArgumentNullException.ThrowIfNull(awards);
+        if (awards.Count is < 1 or > Capacity)
+            throw new ArgumentOutOfRangeException(nameof(awards));
+        if (!IsIdle)
+            throw new InvalidOperationException("An active wave cannot be modified.");
+        if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
+            throw new ArgumentOutOfRangeException(nameof(now));
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var award in awards)
+        {
+            if (award is null || string.IsNullOrWhiteSpace(award.EventId) ||
+                !ids.Add(award.EventId) || _known.Contains(award.EventId))
+                throw new ArgumentException("Wave must contain distinct valid IDs.", nameof(awards));
+        }
+
+        foreach (var award in awards)
+        {
+            _known.Add(award.EventId);
+            _wave.Add(award);
+            _memberStart.Add(now);
+        }
+        _waveStarted = now;
+        _holdEndsAt = now + Entrance + Hold;
+        _previous = now;
+        _clockStarted = true;
+    }
+
+    /// <summary>
     /// Called once when the desktop host finishes its short admission batch.
     /// Advances the idle clock without showing a partial wave, so the first
     /// rendered frame really starts at the shared below-taskbar origin.
@@ -115,32 +150,30 @@ public sealed class ModernToastScheduler
         if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
             throw new ArgumentOutOfRangeException(nameof(now), "Time must be monotonic.");
 
-        // Hosts must advance their monotonic clock BEFORE enqueueing after
-        // idle; that lets the new wave begin now, not when the process launched.
-        var cursor = _clockStarted ? _previous : TimeSpan.Zero;
         _clockStarted = true;
 
-        // Resolve a slow callback at exact transition deadlines; a backlog
-        // never extends the lifetime of already expired notifications.
-        while (true)
+        // Never simulate through a pending wave's lifetime. A busy UI may
+        // deliver a callback seconds late: the active wave can retire, but the
+        // NEXT wave must begin NOW with its complete 300+5000+300ms duration.
+        // The previous implementation looped over future waves until the
+        // wall clock caught up, silently expiring achievements never shown.
+        if (_wave.Count != 0 && now >= _holdEndsAt + Exit)
         {
-            if (_wave.Count == 0 && _waiting.Count > 0)
-            {
-                _waveStarted = cursor;
-                _holdEndsAt = _waveStarted + Entrance + Hold;
-                while (_wave.Count < Capacity && _waiting.Count > 0)
-                {
-                    _wave.Add(_waiting.Dequeue());
-                    _memberStart.Add(_waveStarted);
-                }
-            }
-            if (_wave.Count == 0) break;
-
-            var deadline = _holdEndsAt + Exit;
-            if (deadline > now) break;
             _wave.Clear();
             _memberStart.Clear();
-            cursor = deadline;
+        }
+
+        // Compatibility path for archived preview/Core Enqueue tests only.
+        // Production uses BeginSealedWave from its separate FIFO collector.
+        if (_wave.Count == 0 && _waiting.Count > 0)
+        {
+            _waveStarted = now;
+            _holdEndsAt = now + Entrance + Hold;
+            while (_wave.Count < Capacity && _waiting.Count > 0)
+            {
+                _wave.Add(_waiting.Dequeue());
+                _memberStart.Add(now);
+            }
         }
 
         _previous = now;
