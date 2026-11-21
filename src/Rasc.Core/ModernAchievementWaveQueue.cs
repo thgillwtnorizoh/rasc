@@ -20,11 +20,13 @@ public sealed class ModernAchievementWaveQueue
         public DateTimeOffset FirstSignalAt { get; } = first;
         public DateTimeOffset CollectionEndsAt { get; } = first + CollectionWindow;
         public List<UnlockEvent> Events { get; } = [];
+        public bool CanAppend { get; set; } = true;
     }
 
     private readonly Queue<OpenGroup> _groups = new();
     private readonly HashSet<string> _seen = new(StringComparer.Ordinal);
     private OpenGroup? _tail;
+    private DateTimeOffset? _lastSignalAt;
 
     public int PendingWaveCount => _groups.Count;
     public int PendingAchievementCount => _groups.Sum(group => group.Events.Count);
@@ -44,7 +46,12 @@ public sealed class ModernAchievementWaveQueue
             throw new ArgumentException("Stable event ID required.", nameof(award));
         if (!_seen.Add(award.EventId)) return false;
 
-        if (_tail is null ||
+        // A wall-clock rollback cannot be interpreted as an 800ms coherent
+        // source burst. Isolate the rolled-back award from BOTH the previous
+        // and subsequent cohorts rather than misgrouping it with later events.
+        bool clockRolledBack = _lastSignalAt is { } last &&
+            award.ObservedAt < last;
+        if (_tail is null || clockRolledBack || !_tail.CanAppend ||
             award.ObservedAt < _tail.FirstSignalAt ||
             award.ObservedAt >= _tail.CollectionEndsAt ||
             _tail.Events.Count >= ModernToastScheduler.Capacity)
@@ -53,6 +60,8 @@ public sealed class ModernAchievementWaveQueue
             _groups.Enqueue(_tail);
         }
         _tail.Events.Add(award);
+        if (clockRolledBack) _tail.CanAppend = false;
+        _lastSignalAt = award.ObservedAt;
         return true;
     }
 
@@ -77,5 +86,6 @@ public sealed class ModernAchievementWaveQueue
         _groups.Clear();
         _seen.Clear();
         _tail = null;
+        _lastSignalAt = null;
     }
 }
