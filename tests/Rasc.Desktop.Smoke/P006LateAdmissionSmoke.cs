@@ -54,51 +54,58 @@ internal static class P006LateAdmissionSmoke
                 try
                 {
                     double ms = watch.Elapsed.TotalMilliseconds;
-                    if (ms > 13000)
-                        throw new TimeoutException("Late-join WPF smoke never finished.");
+                    if (ms > 16500)
+                        throw new TimeoutException("Immutable Modern waves did not drain.");
                     switch (stage)
                     {
-                        case 0 when ms >= 600:
+                        case 0 when ms >= 1250:
                             AssertCards(1, ["Late Live 1"]);
                             if (cueCount != 1)
-                                throw new InvalidOperationException("Initial cue not played once.");
+                                throw new InvalidOperationException("First wave should cue once.");
                             stage = 1;
                             break;
-                        case 1 when ms >= 1000:
-                            host.Enqueue(E(2), Content(2)); // separate GC write
+                        case 1 when ms >= 1450:
+                            host.Enqueue(E(2), Content(2)); // NEW GC source write
+                            AssertCards(1, ["Late Live 1"]); // no live join
                             stage = 2;
                             break;
-                        case 2 when ms >= 1450:
-                            host.Enqueue(E(3), Content(3)); // separate GC write
+                        case 2 when ms >= 1650:
+                            host.Enqueue(E(3), Content(3)); // same 800ms second cohort
+                            AssertCards(1, ["Late Live 1"]);
                             stage = 3;
                             break;
-                        case 3 when ms >= 1750:
-                            host.Enqueue(E(4), Content(4)); // capacity 3, next wave
+                        case 3 when ms >= 2500:
+                            host.Enqueue(E(4), Content(4)); // separate third cohort
                             stage = 4;
                             break;
-                        case 4 when ms >= 2100:
-                            AssertCards(3,
-                                ["Late Live 1", "Late Live 2", "Late Live 3"]);
+                        case 4 when ms >= 3000:
+                            AssertCards(1, ["Late Live 1"]);
                             if (cueCount != 1)
                                 throw new InvalidOperationException(
-                                    "Late live joins must not replay the original audio cue.");
-                            // Owner reports that queued waves remained invisible
-                            // until another GC write even after prior WPF timer
-                            // correction. Disable BOTH WPF timer callbacks and
-                            // Rendering during the hold; ThreadPool watchdog
-                            // must wake the wave without another award.
+                                    "Later source writes cannot replay/alter active wave.");
+                            // Suppress ordinary WPF animation and hold wake sources.
+                            // The independent watchdog must still drain sealed
+                            // FIFO waves without any more GC award signals.
                             DetachWpfWakeCallbacks(host);
                             stage = 5;
                             break;
-                        case 5 when ms >= 8400:
-                            AssertCards(1, ["Late Live 4"]);
+                        case 5 when ms >= 7000:
+                            AssertCards(2, ["Late Live 2", "Late Live 3"]);
                             if (cueCount != 2)
                                 throw new InvalidOperationException(
-                                    "Next wave must play exactly one fresh audio cue.");
-                            Console.WriteLine(
-                                "PASS P006 late WPF: 1+1+1 joins immediately, 4th FIFO wave; " +
-                                "two-line/one-line reference layout and sound gate.");
+                                    "Second sealed cohort did not get its own cue.");
                             stage = 6;
+                            break;
+                        case 6 when ms >= 12500:
+                            AssertCards(1, ["Late Live 4"]);
+                            if (cueCount != 3)
+                                throw new InvalidOperationException(
+                                    "Third cohort did not appear without new event.");
+                            Console.WriteLine(
+                                "PASS P006 immutable WPF waves: first 800ms cohort stays fixed, " +
+                                "later 2-card cohort then 1-card cohort, all cues, full durations; " +
+                                "Argyle two-line and short-line layout.");
+                            stage = 7;
                             ticker.Stop();
                             app.Shutdown();
                             break;
@@ -113,7 +120,7 @@ internal static class P006LateAdmissionSmoke
             };
             ticker.Start();
             app.Run();
-            if (failure is not null || stage != 6)
+            if (failure is not null || stage != 7)
             {
                 Console.Error.WriteLine(failure?.ToString() ??
                     "Late-join WPF phases incomplete.");
