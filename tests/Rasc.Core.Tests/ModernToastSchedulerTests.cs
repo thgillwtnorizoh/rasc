@@ -122,17 +122,21 @@ public sealed class ModernToastSchedulerTests
     [Fact]
     public void LateClockSkipDoesNotCueWavesNeverActuallyPresented()
     {
+        // Historical test retained, corrected for P006-C05 owner requirement.
+        // A 12-second UI stall must NOT expire two waves that were never shown.
         var scheduler = new ModernToastScheduler();
-        var gate = new ModernWaveCueGate();
+        var cue = new ModernWaveCueGate();
         for (var i = 1; i <= 9; i++) scheduler.Enqueue(Event(i));
-        Assert.True(gate.Observe(scheduler.Advance(TimeSpan.Zero)));
-        // First and second waves' entire lifetimes were skipped;
-        // only one newly visible third wave should cue, not twice.
-        var third = scheduler.Advance(TimeSpan.FromMilliseconds(11200));
+        Assert.True(cue.Observe(scheduler.Advance(TimeSpan.Zero)));
+        var second = scheduler.Advance(TimeSpan.FromMilliseconds(11200));
+        Assert.Equal("event-4", second[0].Event.EventId);
+        Assert.Equal(0d, second[0].BottomRelativeY);
+        Assert.True(cue.Observe(second));
+        Assert.False(cue.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(11201))));
+        var third = scheduler.Advance(TimeSpan.FromMilliseconds(16800));
         Assert.Equal("event-7", third[0].Event.EventId);
-        Assert.True(gate.Observe(third));
-        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(11201))));
-        Assert.False(gate.Observe(scheduler.Advance(TimeSpan.FromMilliseconds(16800))));
+        Assert.True(cue.Observe(third));
+        Assert.Empty(scheduler.Advance(TimeSpan.FromMilliseconds(22400)));
         Assert.True(scheduler.IsIdle);
     }
 
@@ -156,10 +160,19 @@ public sealed class ModernToastSchedulerTests
     [Fact]
     public void LargeClockJumpResolvesQueuedLifetimes()
     {
+        // Named historical regression is preserved, expectation is now
+        // explicitly the opposite of pre-C05 silent backlog expiry.
         var scheduler = new ModernToastScheduler();
         for (var n = 1; n <= 9; n++) scheduler.Enqueue(Event(n));
         Assert.Equal(3, scheduler.Advance(TimeSpan.Zero).Count);
-        Assert.Empty(scheduler.Advance(TimeSpan.FromMilliseconds(16800)));
+        var second = scheduler.Advance(TimeSpan.FromMilliseconds(16800));
+        Assert.Equal("event-4", second[0].Event.EventId);
+        Assert.Equal(0, second[0].BottomRelativeY);
+        Assert.Equal(3, scheduler.WaitingCount);
+        var third = scheduler.Advance(TimeSpan.FromMilliseconds(33600));
+        Assert.Equal("event-7", third[0].Event.EventId);
+        Assert.Equal(0, third[0].BottomRelativeY);
+        Assert.Empty(scheduler.Advance(TimeSpan.FromMilliseconds(50400)));
         Assert.True(scheduler.IsIdle);
     }
 
@@ -193,6 +206,8 @@ public sealed class ModernToastSchedulerTests
     {
         var scheduler = new ModernToastScheduler();
         scheduler.Enqueue(Event(1));
+        // Presentation starts at the first processed frame, not before it.
+        scheduler.Advance(TimeSpan.Zero);
         scheduler.Advance(TimeSpan.FromMilliseconds(300));
         Assert.False(scheduler.IsAnimating);
         Assert.Equal(TimeSpan.FromMilliseconds(5300),
@@ -208,6 +223,7 @@ public sealed class ModernToastSchedulerTests
         scheduler.Enqueue(Event(1));
         scheduler.Enqueue(Event(2));
         scheduler.Enqueue(Event(3));
+        scheduler.Advance(TimeSpan.Zero); // explicit admission before elapsed animation
         var frames = scheduler.Advance(TimeSpan.FromMilliseconds(300));
         // C02 owner-target wave: events emitted in one batch preserve FIFO
         // from top to bottom instead of P003-C01's arbitrary reversed order.
