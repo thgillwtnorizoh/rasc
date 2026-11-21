@@ -206,6 +206,8 @@ public sealed class ModernToastSchedulerTests
     {
         var scheduler = new ModernToastScheduler();
         scheduler.Enqueue(Event(1));
+        // Presentation starts at the first processed frame, not before it.
+        scheduler.Advance(TimeSpan.Zero);
         scheduler.Advance(TimeSpan.FromMilliseconds(300));
         Assert.False(scheduler.IsAnimating);
         Assert.Equal(TimeSpan.FromMilliseconds(5300),
@@ -221,6 +223,7 @@ public sealed class ModernToastSchedulerTests
         scheduler.Enqueue(Event(1));
         scheduler.Enqueue(Event(2));
         scheduler.Enqueue(Event(3));
+        scheduler.Advance(TimeSpan.Zero); // explicit admission before elapsed animation
         var frames = scheduler.Advance(TimeSpan.FromMilliseconds(300));
         // C02 owner-target wave: events emitted in one batch preserve FIFO
         // from top to bottom instead of P003-C01's arbitrary reversed order.
