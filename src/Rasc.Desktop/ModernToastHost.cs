@@ -123,17 +123,31 @@ internal sealed class ModernToastHost : IDisposable
         Tick();
     }
 
+    /// <summary>
+    /// Synthetic UI previews do NOT claim a GC achievement signal. Preserve
+    /// their historical immediate animation for pixel/CSS regression suites;
+    /// only real award Enqueue goes through the strict 800ms collector.
+    /// </summary>
+    private void EnqueuePreview(UnlockEvent evt, ModernToastContent content)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_schedule.Enqueue(evt)) return;
+        _content.Add(evt.EventId, content);
+        Tick();
+    }
+
     internal void PreviewUnlock() =>
-        Enqueue(PreviewEvent(),
+        EnqueuePreview(PreviewEvent(),
             ModernToastContent.Unlock("Champion", "Win 100 games."));
 
     internal void PreviewRare() =>
-        Enqueue(PreviewEvent(),
+        EnqueuePreview(PreviewEvent(),
             ModernToastContent.Unlock("Interstellar",
                 "Accumulate one mile of distance.", isRare: true));
 
     internal void PreviewProgress() =>
-        Enqueue(PreviewEvent(), ModernToastContent.Progress("Arrest Warrant", 19, 50));
+        EnqueuePreview(PreviewEvent(),
+            ModernToastContent.Progress("Arrest Warrant", 19, 50));
 
     internal void PreviewWave(int count)
     {
@@ -151,10 +165,16 @@ internal sealed class ModernToastHost : IDisposable
                 "Accumulate one mile of distance.", isRare: true),
             ModernToastContent.Progress("Arrest Warrant", 19, 50)
         ];
-        // This callback is synchronous: all N fixtures enter the same 45ms
-        // admission batch, and events beyond 3 await the following wave.
-        for (var index = 0; index < count; index++)
-            Enqueue(PreviewEvent(), examples[index]);
+
+        // Visual fixture: synchronously stage ALL items before starting
+        // playback, so historical 1/2/3/6-card preview geometry stays exact.
+        for (int index = 0; index < count; index++)
+        {
+            var evt = PreviewEvent();
+            if (!_schedule.Enqueue(evt)) continue;
+            _content.Add(evt.EventId, examples[index]);
+        }
+        Tick();
     }
 
     private static UnlockEvent PreviewEvent() =>
