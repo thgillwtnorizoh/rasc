@@ -93,7 +93,7 @@ public partial class MainWindow
         GcStatusText.Text = _gc.State switch
         {
             GcInstallState.Ready => "Ready: " + _gc.GameRoot,
-            GcInstallState.MissingAchievements => "Missing achievements.txt",
+            GcInstallState.MissingAchievements => "Missing achievement_log and achievements.txt",
             GcInstallState.MissingLauncher => "Incomplete game folder",
             _ => "Not found"
         };
@@ -142,7 +142,7 @@ public partial class MainWindow
         StatusText.Text = current.State switch
         {
             GcInstallState.MissingAchievements =>
-                "achievements.txt missing. Install achievement-capable GT-610 or play a game to generate it.",
+                "Neither achievement_log nor achievements.txt exists. Enable GC journal and join a match.",
             GcInstallState.MissingLauncher =>
                 "csgo.exe and csgo_gc/ must exist in the same game folder.",
             _ => "No valid GC source selected. Choose the CS:GO game folder."

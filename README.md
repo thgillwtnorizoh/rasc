@@ -4,6 +4,16 @@ An independent Windows companion for displaying and browsing virtual Counter-Str
 
 **Project status:** P000 research OPEN; P001-C01 native Windows foundation development checkpoint published and build-verified, user-runtime-qualified; independent QA and owner acceptance pending. P002-C01-C04 Classic FPS/DPI completed its 105/105 development CI gate and owner-approved visual design remains preserved. P003-C01 passed 117/117 tests. P003-C02 corrects Modern waves, watermark and rare/progress variants in draft PR #7; the final C02 source passed Windows CI 124/124 (0 build warnings/errors) and self-contained x64 publish at SHA 391582703a8b1cc8f415aa8eca293aeac0187309. P003-C03 foreground-app placement and Modern icon/medal correction passed Windows CI 132/132 at SHA 43e598ad97a25fb4230349e852016f976f1e725b. Runtime/independent QA and owner acceptance remain OPEN.
 
+
+## Local diagnostic logs (P006-C08)
+
+RASC records a small, bounded local log for every application run, at `%LOCALAPPDATA%\\RASC\\logs\\rasc-*.log`. In Windows PowerShell, use `explorer "$env:LOCALAPPDATA\\RASC\\logs"` to inspect the files after a crash. The newest filename is the latest session (UTC timestamp and process ID). Logs rotate to the most recent **8 sessions**, capped at **2 MiB per file**, and are never sent to a server.
+
+The log captures application startup/normal shutdown; GC monitor mode and accepted batch counts; Classic queue/stage changes, render-callback stalls and recovery, foreground/fullscreen window geometry; sound cue success/failure; and managed exception stack traces. **No achievement names, Steam IDs, game file paths or window titles are intentionally logged.** Exception messages and stack traces *can* contain local paths or other private details: review and redact them before posting anywhere. Earlier diagnostics (`%LOCALAPPDATA%\\RASC\\last-unhandled-error.txt`, `last-shutdown.txt` and `last-classic-animation.txt`) remain supported.
+
+For the reported Classic halfway-popup → sound → crash sequence, reproduce with the latest build, then attach the newest `rasc-*.log` and the original `last-unhandled-error.txt` when safe to share. A missing final `[session] normal application exit` is evidence of an interrupted process, **not** proof of a specific exception. Native process termination may require Windows Reliability Monitor / Event Viewer or a user-authorized crash dump for exact cause.
+
+
 ## P005 — Automatic Steam / Game Coordinator installation discovery (draft)
 
 [**P005-C01 installation contract and checkpoint**](docs/P005/checkpoints/P005-C01.md) · [development PR #38](https://github.com/thgillwtnorizoh/rasc/pull/38) · [Work 1 independent QA #39](https://github.com/thgillwtnorizoh/rasc/issues/39).

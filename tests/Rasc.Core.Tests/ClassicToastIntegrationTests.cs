@@ -4,7 +4,7 @@ using Xunit;
 namespace Rasc.Core.Tests;
 
 /// <summary>
-/// Development-only integration: GC snapshots -> durable ledger -> Classic slide timeline.
+/// Development-only integration: GC snapshots -> volatile live ledger -> Classic slide timeline.
 /// Does not establish WPF GUI/runtime visual equivalence.
 /// </summary>
 public sealed class ClassicToastIntegrationTests
@@ -16,10 +16,9 @@ public sealed class ClassicToastIntegrationTests
     [Fact]
     public void SixNewUnlocksAnimateInOrderWithoutReplayFromRestoredHistory()
     {
-        var db = Path.Combine(Path.GetTempPath(), "rasc-classic-" + Guid.NewGuid().ToString("N") + ".db");
         const string source = "TEST_GC";
         var now = DateTimeOffset.FromUnixTimeSeconds(1_794_738_859);
-        using var store = new UnlockEventStore(db);
+        using var store = new UnlockEventStore();
         store.AcceptSnapshot(source, Snapshot(("EXISTING", 1)), now); // silent baseline
         var newAwards = Enumerable.Range(1, 6)
             .Select(i => ($"AWARD_{i}", (uint)(100 + i))).ToArray();

@@ -1,11 +1,12 @@
 namespace Rasc.Core;
 
 /// <summary>
-/// Bounded 1-3 card Steam-like notification stack. Pre-existing preview wave
-/// admission stays immutable (historical P003 behavior). P006-C04 live GC
-/// awards may optionally join a still-visible, not-full stack for a bounded
-/// window; otherwise FIFO overflow becomes the next wave. This is an
-/// owner-requested ENGINEERING correction, not a claimed Steam internal rule.
+/// Immutable 1-3-card presentation scheduler. A separately owned
+/// ModernAchievementWaveQueue determines FIFO grouping and collection times;
+/// this class only owns the common 300+5000+300ms playback. Once admitted,
+/// not even a single-card wave can accept another achievement. Historical
+/// Enqueue remains as a compatibility entry for archived deterministic preview
+/// tests, never used by the production ModernToastHost.
 /// </summary>
 public sealed class ModernToastScheduler
 {
@@ -17,9 +18,7 @@ public sealed class ModernToastScheduler
     public static readonly TimeSpan Hold = TimeSpan.FromMilliseconds(5000);
     public static readonly TimeSpan Exit = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan Lifetime = Entrance + Hold + Exit;
-    // A second GC file rewrite may arrive after the first 45ms initial batch.
-    // Cap the joining window to avoid indefinitely extending a busy stack.
-    public static readonly TimeSpan LiveLateAdmissionWindow = TimeSpan.FromSeconds(3);
+
 
     private readonly List<UnlockEvent> _wave = [];
     private readonly List<TimeSpan> _memberStart = [];
@@ -70,29 +69,38 @@ public sealed class ModernToastScheduler
     }
 
     /// <summary>
-    /// Opt-in for source-confirmed LIVE awards arriving in separate GC writes
-    /// while the first wave is still visible. Does not disturb the already
-    /// rendered card, and may extend the common hold so the new card gets its
-    /// full entrance + hold. A non-qualifying event must use normal Enqueue.
-    /// Preview/scheduler baseline tests intentionally use normal Enqueue.
+    /// Production-only entry: admit one COMPLETE, already sealed wave supplied
+    /// by ModernAchievementWaveQueue. All cards share one entrance/hold/exit
+    /// clock; no late arrivals can be appended to the active wave.
     /// </summary>
-    public bool TryAdmitLiveDuringHold(UnlockEvent evt, TimeSpan now)
+    public void BeginSealedWave(IReadOnlyList<UnlockEvent> awards, TimeSpan now)
     {
-        ArgumentNullException.ThrowIfNull(evt);
-        if (string.IsNullOrWhiteSpace(evt.EventId))
-            throw new ArgumentException("Stable event ID required.", nameof(evt));
+        ArgumentNullException.ThrowIfNull(awards);
+        if (awards.Count is < 1 or > Capacity)
+            throw new ArgumentOutOfRangeException(nameof(awards));
+        if (!IsIdle)
+            throw new InvalidOperationException("An active wave cannot be modified.");
         if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
             throw new ArgumentOutOfRangeException(nameof(now));
-        if (_wave.Count == 0 || _wave.Count >= Capacity || _waiting.Count != 0 ||
-            now >= _waveStarted + LiveLateAdmissionWindow ||
-            now >= _holdEndsAt || _known.Contains(evt.EventId))
-            return false;
 
-        _known.Add(evt.EventId);
-        _wave.Add(evt);
-        _memberStart.Add(now);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var award in awards)
+        {
+            if (award is null || string.IsNullOrWhiteSpace(award.EventId) ||
+                !ids.Add(award.EventId) || _known.Contains(award.EventId))
+                throw new ArgumentException("Wave must contain distinct valid IDs.", nameof(awards));
+        }
+
+        foreach (var award in awards)
+        {
+            _known.Add(award.EventId);
+            _wave.Add(award);
+            _memberStart.Add(now);
+        }
+        _waveStarted = now;
         _holdEndsAt = now + Entrance + Hold;
-        return true;
+        _previous = now;
+        _clockStarted = true;
     }
 
     /// <summary>
@@ -115,32 +123,30 @@ public sealed class ModernToastScheduler
         if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
             throw new ArgumentOutOfRangeException(nameof(now), "Time must be monotonic.");
 
-        // Hosts must advance their monotonic clock BEFORE enqueueing after
-        // idle; that lets the new wave begin now, not when the process launched.
-        var cursor = _clockStarted ? _previous : TimeSpan.Zero;
         _clockStarted = true;
 
-        // Resolve a slow callback at exact transition deadlines; a backlog
-        // never extends the lifetime of already expired notifications.
-        while (true)
+        // Never simulate through a pending wave's lifetime. A busy UI may
+        // deliver a callback seconds late: the active wave can retire, but the
+        // NEXT wave must begin NOW with its complete 300+5000+300ms duration.
+        // The previous implementation looped over future waves until the
+        // wall clock caught up, silently expiring achievements never shown.
+        if (_wave.Count != 0 && now >= _holdEndsAt + Exit)
         {
-            if (_wave.Count == 0 && _waiting.Count > 0)
-            {
-                _waveStarted = cursor;
-                _holdEndsAt = _waveStarted + Entrance + Hold;
-                while (_wave.Count < Capacity && _waiting.Count > 0)
-                {
-                    _wave.Add(_waiting.Dequeue());
-                    _memberStart.Add(_waveStarted);
-                }
-            }
-            if (_wave.Count == 0) break;
-
-            var deadline = _holdEndsAt + Exit;
-            if (deadline > now) break;
             _wave.Clear();
             _memberStart.Clear();
-            cursor = deadline;
+        }
+
+        // Compatibility path for archived preview/Core Enqueue tests only.
+        // Production uses BeginSealedWave from its separate FIFO collector.
+        if (_wave.Count == 0 && _waiting.Count > 0)
+        {
+            _waveStarted = now;
+            _holdEndsAt = now + Entrance + Hold;
+            while (_wave.Count < Capacity && _waiting.Count > 0)
+            {
+                _wave.Add(_waiting.Dequeue());
+                _memberStart.Add(now);
+            }
         }
 
         _previous = now;

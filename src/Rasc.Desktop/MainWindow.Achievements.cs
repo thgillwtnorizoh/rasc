@@ -131,7 +131,7 @@ public partial class MainWindow
                     LoadLiveAchievementMetadata(PathBox.Text);
             }
 
-            _store ??= new UnlockEventStore(Path.Combine(_localDirectory, "history.db"));
+            _store ??= new UnlockEventStore();
             var sourceKey = string.IsNullOrWhiteSpace(PathBox.Text)
                 ? null : new GcFileSource(PathBox.Text).SourceKey;
             var state = sourceKey is null
@@ -141,13 +141,13 @@ public partial class MainWindow
                 _libraryDefinitions!, _libraryLocalization, state);
 
             var status = _monitor is null
-                ? "Not currently monitoring. Showing last committed GC snapshot when available."
+                ? "Not currently monitoring. Earned state requires a live GC session."
                 : StatusText.Text;
             _libraryWindow.SetSnapshot(result, _libraryLocalizationStatus, status);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
             FormatException or ArgumentException or InvalidOperationException or
-            Microsoft.Data.Sqlite.SqliteException)
+            System.Text.Json.JsonException)
         {
             _libraryDefinitions = null; // never silently accept invalid owner edits
             _libraryLocalization = null;
@@ -158,8 +158,8 @@ public partial class MainWindow
 
     private void OnCommittedLibrarySnapshot(GcCurrentAchievementState state)
     {
-        // The snapshot is committed before this callback. The persisted store remains
-        // the source of truth for the selected GC path, including on monitor restart.
+        // Live earned-state snapshots exist only for the current monitoring
+        // session. Restarting RASC never replays an old database ledger.
         if (state.HasValidSnapshot && _libraryWindow is not null)
             RefreshAchievementLibrary(reloadSources: false);
     }

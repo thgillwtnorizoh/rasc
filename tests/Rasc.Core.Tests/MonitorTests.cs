@@ -34,10 +34,9 @@ public sealed class MonitorTests
         var folder = Path.Combine(Path.GetTempPath(), "rasc-monitor-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "achievements.txt");
-        var db = Path.Combine(folder, "history.db");
         var initial = Snapshot(("A", 1));
         await File.WriteAllTextAsync(path, initial);
-        using var store = new UnlockEventStore(db);
+        using var store = new UnlockEventStore();
         await using var monitor = new AchievementMonitor(new GcFileSource(path), store,
             TimeSpan.FromMilliseconds(75));
         var baselined = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -53,7 +52,25 @@ public sealed class MonitorTests
         var changed = Snapshot(("A", 1), ("B", 2));
         var temp = path + ".tmp";
         await File.WriteAllTextAsync(temp, changed);
-        File.Move(temp, path, overwrite: true);
+        // The Windows scanner may briefly hold either file during a source
+        // replacement. Retry within a bounded 500 ms window; a lasting
+        // sharing violation still fails this original atomic-replace test.
+        Exception? replacementFailure = null;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            try
+            {
+                File.Move(temp, path, overwrite: true);
+                replacementFailure = null;
+                break;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                replacementFailure = ex;
+                await Task.Delay(25);
+            }
+        }
+        Assert.Null(replacementFailure);
         var evt = await unlocked.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal("B", evt.AchievementId);
         Assert.Equal(changed, await File.ReadAllTextAsync(path));
@@ -68,7 +85,7 @@ public sealed class MonitorTests
         var path = Path.Combine(folder, "achievements.txt");
         await File.WriteAllTextAsync(path, Snapshot(("UNSTOPPABLE_FORCE", 0)));
         var source = new GcFileSource(path);
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         await using var monitor = new AchievementMonitor(
             source, store, TimeSpan.FromMilliseconds(60));
 
@@ -123,7 +140,7 @@ public sealed class MonitorTests
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "achievements.txt");
         await File.WriteAllTextAsync(path, Snapshot(("BASELINE", 1)));
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         var source = new GcFileSource(path);
         await using var monitor = new AchievementMonitor(
             source, store, TimeSpan.FromMilliseconds(60));
@@ -173,7 +190,7 @@ public sealed class MonitorTests
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "achievements.txt");
         await File.WriteAllTextAsync(path, Snapshot(("BASELINE", 42)));
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         var source = new GcFileSource(path);
         var monitor = new AchievementMonitor(source, store, TimeSpan.FromMinutes(5));
         var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -190,6 +207,169 @@ public sealed class MonitorTests
         stopwatch.Stop();
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(3),
             $"Monitor disposal took {stopwatch.Elapsed} rather than canceling its waiting poll.");
+    }
+
+    [Fact]
+    public async Task PrefersLiveJournalAndFallsBackOnlyWhenFileDisappears()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-journal-monitor-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
+        await File.WriteAllTextAsync(source.FilePath, Snapshot(("ALREADY", 1)));
+        await File.WriteAllTextAsync(source.JournalPath, "");
+        using var store = new UnlockEventStore();
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(40));
+
+        var ready = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var unlocked = new TaskCompletionSource<UnlockEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int awards = 0;
+        monitor.StatusChanged += (_, status) =>
+        {
+            if (status.StartsWith("Monitoring achievement_log", StringComparison.Ordinal))
+                ready.TrySetResult(true);
+        };
+        monitor.UnlockDetected += (_, award) =>
+        {
+            Interlocked.Increment(ref awards);
+            unlocked.TrySetResult(award);
+        };
+        await monitor.StartAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(store.GetRecent(source.SourceKey)); // empty log is not snapshot fallback
+
+        await File.AppendAllTextAsync(source.JournalPath,
+            "{\"v\":1,\"session\":\"match1\",\"seq\":1,\"time_ms\":1795260000125," +
+            "\"steady_us\":55,\"type\":\"unlock\",\"id\":\"LIVE\"," +
+            "\"unlock_seconds\":1795260000}\n");
+        Assert.Equal("LIVE",
+            (await unlocked.Task.WaitAsync(TimeSpan.FromSeconds(10))).AchievementId);
+        await Task.Delay(160);
+        Assert.Equal(1, Volatile.Read(ref awards));
+
+        // A fallback snapshot that already contains the live unlock must not
+        // generate a second synthetic reward.
+        await File.WriteAllTextAsync(source.FilePath,
+            Snapshot(("ALREADY", 1), ("LIVE", 1795260000)));
+        await File.WriteAllTextAsync(source.JournalPath, ""); // match ended
+        await Task.Delay(160);
+        Assert.Equal(1, Volatile.Read(ref awards));
+        File.Delete(source.JournalPath); // legacy GC fallback
+        await Task.Delay(160);
+        Assert.Equal(1, Volatile.Read(ref awards));
+        Assert.Single(store.GetRecent(source.SourceKey));
+    }
+
+    [Fact]
+    public async Task MalformedJournalNeverSilentlyFallsBackToSnapshotAwards()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-malformed-journal-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
+        await File.WriteAllTextAsync(source.FilePath, Snapshot(("A", 1)));
+        await File.WriteAllTextAsync(source.JournalPath, "not-json\n");
+        using var store = new UnlockEventStore();
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(45));
+        var errored = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.StatusChanged += (_, message) =>
+        {
+            if (message.StartsWith("Journal Invalid:", StringComparison.Ordinal))
+                errored.TrySetResult(true);
+        };
+        await monitor.StartAsync();
+        await errored.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(store.GetRecent(source.SourceKey));
+        Assert.False(store.GetCurrentState(source.SourceKey).HasValidSnapshot);
+    }
+
+    private static string JournalEvent(string type, ulong seq, string fields = "") =>
+        "{\"v\":1,\"session\":\"process-A\",\"seq\":" + seq +
+        ",\"time_ms\":1795260000125,\"steady_us\":44,\"type\":\"" +
+        type + "\"" + fields + "}\n";
+
+    [Fact]
+    public async Task ExistingJournalAndDatabaseHistoryNeverReplayOnMonitorStart()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-silent-attach-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
+        await File.WriteAllTextAsync(source.FilePath, Snapshot(("OLD", 4)));
+        await File.WriteAllTextAsync(source.JournalPath,
+            JournalEvent("match_start", 1, ",\"reason\":\"join\"") +
+            JournalEvent("unlock", 2, ",\"id\":\"OLD\",\"unlock_seconds\":4"));
+        using var store = new UnlockEventStore();
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(50));
+        var firstRead = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var newlyEarned = new TaskCompletionSource<UnlockEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.StatusChanged += (_, message) =>
+        {
+            if (message.StartsWith("Monitoring achievement_log", StringComparison.Ordinal))
+                firstRead.TrySetResult(true);
+        };
+        monitor.UnlockDetected += (_, award) => newlyEarned.TrySetResult(award);
+        await monitor.StartAsync();
+        await firstRead.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(store.GetRecent(source.SourceKey));
+        Assert.Empty(store.GetPending(source.SourceKey));
+
+        await File.AppendAllTextAsync(source.JournalPath,
+            JournalEvent("unlock", 3, ",\"id\":\"FRESH\",\"unlock_seconds\":5"));
+        Assert.Equal("FRESH",
+            (await newlyEarned.Task.WaitAsync(TimeSpan.FromSeconds(10))).AchievementId);
+        Assert.Single(store.GetRecent(source.SourceKey));
+        Assert.False(File.Exists(Path.Combine(folder, "history.db")));
+    }
+
+    [Fact]
+    public async Task WithJournalEarnedSnapshotIsReadAtMatchStartNotOnEveryPoll()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-match-baseline-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
+        await File.WriteAllTextAsync(source.FilePath, Snapshot(("A", 10)));
+        await File.WriteAllTextAsync(source.JournalPath, "");
+        using var store = new UnlockEventStore();
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(50));
+        var observed = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var updated = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.StatusChanged += (_, msg) =>
+        {
+            if (msg.StartsWith("Monitoring achievement_log", StringComparison.Ordinal))
+                observed.TrySetResult(true);
+        };
+        monitor.CurrentStateChanged += (_, state) =>
+        {
+            if (state.Achievements.ContainsKey("B")) updated.TrySetResult(true);
+        };
+        await monitor.StartAsync();
+        await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Single(store.GetCurrentState(source.SourceKey).Achievements);
+
+        await File.WriteAllTextAsync(source.FilePath,
+            Snapshot(("A", 10), ("B", 20)));
+        await Task.Delay(220);
+        Assert.Single(store.GetCurrentState(source.SourceKey).Achievements);
+        Assert.Empty(store.GetRecent(source.SourceKey));
+
+        await File.WriteAllTextAsync(source.JournalPath,
+            JournalEvent("match_start", 1, ",\"reason\":\"join\""));
+        await updated.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, store.GetCurrentState(source.SourceKey).Achievements.Count);
+        Assert.Empty(store.GetRecent(source.SourceKey)); // B was previously earned
     }
 
 }

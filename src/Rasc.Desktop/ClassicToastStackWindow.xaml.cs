@@ -31,6 +31,7 @@ public partial class ClassicToastStackWindow : Window
     private double _contentScale = 1;
     private HwndSource? _hwndSource;
     private bool _closed;
+    private string? _lastLoggedPlacement;
     private const int WmDpiChanged = 0x02E0;
     private const int WmDisplayChange = 0x007E;
     private const int WmSettingChange = 0x001A;
@@ -102,6 +103,22 @@ public partial class ClassicToastStackWindow : Window
         {
             Left = work.Right - Width;
             Top = work.Bottom - Height;
+        }
+        // Capture only when the anchor actually changes: DPI, display,
+        // active fullscreen target or host bounds. This is crucial context
+        // for a card visible only halfway at the screen edge.
+        var hwnd = new WindowInteropHelper(this).Handle;
+        var placement = fullscreen is null ? "desktop" : "fullscreen";
+        if (hwnd != IntPtr.Zero && GetWindowRect(hwnd, out var actual))
+            placement += $"; windowPx={actual.Left},{actual.Top}," +
+                $"{actual.Right-actual.Left},{actual.Bottom-actual.Top}";
+        else
+            placement += $"; requestedDip={Left:F1},{Top:F1},{Width:F1},{Height:F1}";
+        placement += $"; contentScale={_contentScale:F3}";
+        if (!string.Equals(_lastLoggedPlacement, placement, StringComparison.Ordinal))
+        {
+            _lastLoggedPlacement = placement;
+            AppLog.Info("classic.anchor", placement);
         }
     }
 
@@ -217,6 +234,16 @@ public partial class ClassicToastStackWindow : Window
         _hwndSource = null;
         base.OnClosed(e);
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);

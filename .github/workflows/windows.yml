@@ -29,6 +29,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Modern rare PNG-mask glow visibility/animation smoke failed" }
           dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- classic-only
           if ($LASTEXITCODE -ne 0) { throw "Classic-only WPF smoke failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- classic-render-stall
+          if ($LASTEXITCODE -ne 0) { throw "Fullscreen-style Classic render-callback starvation/position smoke failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- classic-reentrant-six-burst
+          if ($LASTEXITCODE -ne 0) { throw "Classic six-award WPF nested-render crash regression failed" }
+          dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- classic-transactional-effects
+          if ($LASTEXITCODE -ne 0) { throw "Classic transactional frame ownership / exactly-once sound WPF smoke failed" }
           dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-idle-classic
           if ($LASTEXITCODE -ne 0) { throw "Idle Modern-to-Classic WPF smoke failed" }
           dotnet run --project tests/Rasc.Desktop.Smoke/Rasc.Desktop.Smoke.csproj --configuration Release -- modern-stack-two

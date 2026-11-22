@@ -29,9 +29,9 @@ internal static class Program
         if (args.Length == 1 && args[0] == "p006-late-admission")
             return P006LateAdmissionSmoke.Run();
 
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "classic-render-stall" or "classic-reentrant-six-burst" or "classic-transactional-effects" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|classic-render-stall|classic-reentrant-six-burst|classic-transactional-effects|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
             return 2;
         }
         var scenario = args[0];
@@ -481,6 +481,8 @@ internal static class Program
             var stage = 0;
             InstallationRecoveryWindow? recoveryTest = null;
             ModernToastHost? cueTestHost = null;
+            ClassicToastHost? stalledClassicHost = null;
+            TimeSpan syntheticClassicTime = TimeSpan.Zero;
             Window? firstWaveWindow = null;
             var cueCount = 0;
             byte[]? rareFirstFrame = null;
@@ -496,6 +498,7 @@ internal static class Program
                 interval.Stop();
                 recoveryTest?.Close();
                 cueTestHost?.Dispose();
+                stalledClassicHost?.Dispose();
                 app.Shutdown();
             }
 
@@ -531,8 +534,8 @@ internal static class Program
                                 .Select(b => b.Content?.ToString()).ToArray();
                             if (!labels.Any(t => t.Contains("Files missing from the selected Steam installation") &&
                                     t.Contains("steam.exe") && t.Contains(InstallationDiscovery.SteamDesktopWav)) ||
-                                !labels.Any(t => t.Contains("Missing: csgo_gc/achievements.txt") &&
-                                    t.Contains("play a game")) ||
+                                !labels.Any(t => t.Contains("Missing: csgo_gc/achievement_log and csgo_gc/achievements.txt") &&
+                                    t.Contains("join a match")) ||
                                 !actions.Contains("Set Steam location…") ||
                                 !actions.Contains("Set CS:GO location…") ||
                                 !actions.Contains("Open GT-610 downloads"))
@@ -563,6 +566,17 @@ internal static class Program
                                     source.GameRoot != commonGame)
                                 {
                                     Fail("Steam library VDF did not discover the sibling GC/launcher game root.");
+                                    return;
+                                }
+                                // A journal-only GC installation is also ready.
+                                File.Delete(Path.Combine(commonGame, "csgo_gc", "achievements.txt"));
+                                File.WriteAllText(Path.Combine(commonGame, "csgo_gc", "achievement_log"), "");
+                                var journalOnly = InstallationLocator.FindGc(
+                                    new SteamInstallReport(steamRoot, false, []), null, null);
+                                if (journalOnly.State != GcInstallState.Ready ||
+                                    journalOnly.GameRoot != commonGame)
+                                {
+                                    Fail("Journal-only GC was rejected by installation discovery.");
                                     return;
                                 }
                             }
@@ -684,6 +698,203 @@ internal static class Program
                             app.Shutdown();
                         }
                     }
+                    else if (scenario == "classic-transactional-effects")
+                    {
+                        if (stage == 0)
+                        {
+                            syntheticClassicTime = TimeSpan.Zero;
+                            var sounds = 0;
+                            stalledClassicHost = new ClassicToastHost(window.Dispatcher)
+                            {
+                                SuppressCompositionCallbacksForSmoke = true,
+                                TimeOverrideForSmoke = () => syntheticClassicTime
+                            };
+                            stalledClassicHost.SetSettings(
+                                new ClassicPresentationSettings(0, 100));
+                            stalledClassicHost.ConfigureCustomization(
+                                PopupFontChoice.Original, () => sounds++);
+                            for (var i = 0; i < 6; i++)
+                                stalledClassicHost.PreviewUnlock();
+
+                            // Full WPF host, not only the scheduler kernel:
+                            // repeatedly update the same frame and traverse all
+                            // six arrivals under a fast synthetic monotonic clock.
+                            for (var step = 0; step <= 500 && !stalledClassicHost.IsIdle; step++)
+                            {
+                                syntheticClassicTime = TimeSpan.FromMilliseconds(step * 250L);
+                                stalledClassicHost.AdvanceForSmoke();
+                                stalledClassicHost.AdvanceForSmoke(); // idempotent effects
+                                var visibleClassicWindows = app.Windows.Cast<Window>()
+                                    .Where(w => w.IsVisible &&
+                                        w.GetType().Name == "ClassicToastStackWindow").ToArray();
+                                if (visibleClassicWindows.Length > 1 ||
+                                    visibleClassicWindows.Any(w => w.Content is Canvas canvas &&
+                                        canvas.Children.OfType<ClassicToastCard>().Count() >
+                                            ClassicToastScheduler.Capacity))
+                                {
+                                    Fail("Classic owner exceeded one HWND or three live visual cards.");
+                                    return;
+                                }
+                            }
+                            if (sounds != 6 || !stalledClassicHost.IsIdle || classicCount() != 0)
+                            {
+                                Fail($"Classic exactly-once admission sound or lifecycle failed: " +
+                                     $"sounds={sounds}, idle={stalledClassicHost.IsIdle}, hwnd={classicCount()}.");
+                                return;
+                            }
+                            var logFile = AppLog.CurrentFile;
+                            if (logFile is null) { Fail("Classic owner log missing."); return; }
+                            using (var stream = new FileStream(logFile, FileMode.Open,
+                                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                            using (var reader = new StreamReader(stream))
+                            {
+                                var trace = reader.ReadToEnd();
+                                if (trace.Contains("[classic.invariant]", StringComparison.Ordinal))
+                                {
+                                    Fail("Classic owner emitted a missing-content invariant.");
+                                    return;
+                                }
+                            }
+                            classicObserved = true;
+                            stalledClassicHost.Dispose();
+                            stalledClassicHost = null;
+                            stage++;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario == "classic-reentrant-six-burst")
+                    {
+                        if (stage == 0)
+                        {
+                            stalledClassicHost = new ClassicToastHost(window.Dispatcher)
+                            {
+                                SuppressCompositionCallbacksForSmoke = true,
+                                TimeOverrideForSmoke = () => syntheticClassicTime
+                            };
+                            stalledClassicHost.SetSettings(
+                                new ClassicPresentationSettings(0, 100));
+                            // Exact reported admission shape: six instantaneous
+                            // Classic awards. Original WPF test only used one.
+                            for (var i = 0; i < 6; i++)
+                                stalledClassicHost.PreviewUnlock();
+
+                            syntheticClassicTime = TimeSpan.FromMilliseconds(100);
+                            var nested = false;
+                            stalledClassicHost.FramesCapturedForSmoke = () =>
+                            {
+                                if (nested) return;
+                                nested = true;
+                                // Reproduce the old crash deterministically:
+                                // the outer frame still references first card,
+                                // while a nested Tick advances long enough to
+                                // retire it and erase its cached content.
+                                syntheticClassicTime = TimeSpan.FromMilliseconds(8500);
+                                stalledClassicHost.AdvanceForSmoke();
+                            };
+                            stalledClassicHost.AdvanceForSmoke();
+                            stalledClassicHost.FramesCapturedForSmoke = null;
+                            if (!nested || stalledClassicHost.TickDeferralsForSmoke < 1)
+                            {
+                                Fail("Reentrant Classic render was not deferred.");
+                                return;
+                            }
+
+                            syntheticClassicTime = TimeSpan.FromSeconds(60);
+                            stalledClassicHost.AdvanceForSmoke();
+                            if (!stalledClassicHost.IsIdle || classicCount() != 0)
+                            {
+                                Fail("Six-achievement burst did not retire cleanly.");
+                                return;
+                            }
+                            // Never accept a silently skipped materialization:
+                            // a missing cache entry should be a hard test fail.
+                            var file = AppLog.CurrentFile;
+                            if (file is null) { Fail("Diagnostic log unavailable."); return; }
+                            using (var stream = new FileStream(file, FileMode.Open,
+                                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                            using (var reader = new StreamReader(stream))
+                            {
+                                var trace = reader.ReadToEnd();
+                                if (!trace.Contains("[classic.reentry] deferred nested Tick;",
+                                        StringComparison.Ordinal)
+                                    || trace.Contains("[classic.invariant]", StringComparison.Ordinal))
+                                {
+                                    Fail("Classic six-burst reentry diagnostic invariant violated.");
+                                    return;
+                                }
+                            }
+                            classicObserved = true;
+                            stalledClassicHost.Dispose();
+                            stalledClassicHost = null;
+                            stage++;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario == "classic-render-stall")
+                    {
+                        if (stage == 0)
+                        {
+                            // Simulate fullscreen WPF composition starvation.
+                            // This exercises the independent timer without
+                            // artificial/rendered-frame callbacks.
+                            stalledClassicHost = new ClassicToastHost(window.Dispatcher)
+                            {
+                                SuppressCompositionCallbacksForSmoke = true
+                            };
+                            stalledClassicHost.SetSettings(
+                                new ClassicPresentationSettings(0, 100));
+                            stalledClassicHost.PreviewUnlock();
+                            stage++;
+                        }
+                        else if (stage == 1 && elapsed > 950)
+                        {
+                            if (classicCount() != 1 || stalledClassicHost is null)
+                            {
+                                Fail("Rendering-starved Classic toast never appeared.");
+                                return;
+                            }
+                            var hostWindow = app.Windows.Cast<Window>()
+                                .Single(w => w.IsVisible &&
+                                    w.GetType().Name == "ClassicToastStackWindow");
+                            if (hostWindow.Content is not Canvas viewport)
+                            {
+                                Fail("Classic viewport missing."); return;
+                            }
+                            var card = viewport.Children.OfType<ClassicToastCard>().Single();
+                            var top = Canvas.GetTop(card);
+                            if (card.Clip is not RectangleGeometry clip ||
+                                Math.Abs(top - (ClassicToastScheduler.ViewportHeight -
+                                    ClassicToastScheduler.CardHeight)) > 1.5 ||
+                                Math.Abs(clip.Rect.Top) > 1.5 ||
+                                Math.Abs(clip.Rect.Height - ClassicToastScheduler.CardHeight) > 1.5)
+                            {
+                                Fail($"Classic card stuck outside viewport: y={top}, clip={card.Clip}.");
+                                return;
+                            }
+                            if (hostWindow.Top + hostWindow.Height >
+                                SystemParameters.WorkArea.Bottom + 2)
+                            {
+                                Fail("Classic host extends beyond desktop work-area bottom.");
+                                return;
+                            }
+                            classicObserved = true;
+                            stage++;
+                        }
+                        else if (stage == 2 && elapsed > 8100)
+                        {
+                            if (classicCount() != 0 || !stalledClassicHost!.IsIdle)
+                            {
+                                Fail("Rendering-starved Classic toast did not retire.");
+                                return;
+                            }
+                            stalledClassicHost.Dispose();
+                            stalledClassicHost = null;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
                     else if (scenario is "classic-only" or "modern-idle-classic")
                     {
                         if (stage == 0)
@@ -700,6 +911,27 @@ internal static class Program
                             if (classicCount() == 0) { Fail("Classic never appeared."); return; }
                             classicObserved = true;
                             if (modernCount() != 0) { Fail("Unexpected Modern HWND."); return; }
+                            if (scenario == "classic-only")
+                            {
+                                // Verify the REAL WPF toast emitted useful
+                                // diagnostic events, not just a logger unit test.
+                                var logFile = AppLog.CurrentFile;
+                                if (logFile is null || !File.Exists(logFile))
+                                {
+                                    Fail("Session diagnostics were not created."); return;
+                                }
+                                using var liveLog = new FileStream(logFile,
+                                    FileMode.Open, FileAccess.Read,
+                                    FileShare.ReadWrite | FileShare.Delete);
+                                using var reader = new StreamReader(liveLog);
+                                var trace = reader.ReadToEnd();
+                                if (!trace.Contains("[classic.queue] accepted;", StringComparison.Ordinal) ||
+                                    !trace.Contains("[classic.card] stage=Visible;", StringComparison.Ordinal) ||
+                                    !trace.Contains("[classic.window] create;", StringComparison.Ordinal))
+                                {
+                                    Fail("Classic stage, queue or HWND diagnostics missing."); return;
+                                }
+                            }
                             stage++;
                         }
                         else if (stage == 2 && elapsed > 8050)

@@ -13,6 +13,7 @@ public static class InstallationDiscovery
     public const string SteamDeckWav = "steamui/sounds/deck_ui_achievement_toast.wav";
     public const string GcFolder = "csgo_gc";
     public const string GcFilename = "achievements.txt";
+    public const string GcJournalFilename = "achievement_log";
 
     public static SteamInstallReport FindSteam(
         string? programFilesX86, string? programFiles,
@@ -99,7 +100,8 @@ public static class InstallationDiscovery
             return new(null, GcInstallState.NoInstallation, false);
         if (!folder || !exe)
             return new(root, GcInstallState.MissingLauncher, manual);
-        if (!File.Exists(Path.Combine(root, GcFolder, GcFilename)))
+        if (!File.Exists(Path.Combine(root, GcFolder, GcFilename))
+            && !File.Exists(Path.Combine(root, GcFolder, GcJournalFilename)))
             return new(root, GcInstallState.MissingAchievements, manual);
         return new(root, GcInstallState.Ready, manual);
     }
@@ -107,7 +109,9 @@ public static class InstallationDiscovery
     public static string? GameRootFromAchievementsPath(string? path)
     {
         var file = Normalize(path);
-        if (file is null || !Path.GetFileName(file).Equals(GcFilename, StringComparison.OrdinalIgnoreCase))
+        if (file is null ||
+            (!Path.GetFileName(file).Equals(GcFilename, StringComparison.OrdinalIgnoreCase)
+             && !Path.GetFileName(file).Equals(GcJournalFilename, StringComparison.OrdinalIgnoreCase)))
             return null;
         var parent = Path.GetDirectoryName(file);
         if (parent is null || !Path.GetFileName(parent).Equals(GcFolder, StringComparison.OrdinalIgnoreCase))

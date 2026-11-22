@@ -14,13 +14,10 @@ public sealed class AchievementLibraryProjectionTests
         new(new Dictionary<string, int>(), new Dictionary<string, float>(),
             achievements.ToDictionary(x => x.id, x => x.time, StringComparer.Ordinal));
 
-    private static string Database() =>
-        Path.Combine(Path.GetTempPath(), "rasc-library-" + Guid.NewGuid().ToString("N") + ".db");
-
     [Fact]
     public void BeforeValidSourceUnknownIsNotLockedOrZeroEarnedClaim()
     {
-        using var store = new UnlockEventStore(Database());
+        using var store = new UnlockEventStore();
         var unknown = store.GetCurrentState(SourceOne);
         Assert.False(unknown.HasValidSnapshot);
         Assert.Empty(unknown.Achievements);
@@ -46,7 +43,7 @@ public sealed class AchievementLibraryProjectionTests
     [Fact]
     public void ValidEmptyBaselineIsAllLockedWithNoPopupHistory()
     {
-        using var store = new UnlockEventStore(Database());
+        using var store = new UnlockEventStore();
         Assert.Empty(store.AcceptSnapshot(SourceOne, Snapshot(), When));
         var current = store.GetCurrentState(SourceOne);
         Assert.True(current.HasValidSnapshot);
@@ -63,7 +60,7 @@ public sealed class AchievementLibraryProjectionTests
     [Fact]
     public void FirstValidBaselineShowsPreexistingAwardsSilentlyAndPreservesZeroTimestamp()
     {
-        using var store = new UnlockEventStore(Database());
+        using var store = new UnlockEventStore();
         Assert.Empty(store.AcceptSnapshot(SourceOne, Snapshot(
             ("UNSTOPPABLE_FORCE", 1790000000),
             ("KILL_WITH_OWN_GUN", 0)), When));
@@ -87,7 +84,7 @@ public sealed class AchievementLibraryProjectionTests
     [Fact]
     public void StatsNeverCreateAnAwardAndExtraGcIdDoesNotBecomeCurated()
     {
-        using var store = new UnlockEventStore(Database());
+        using var store = new UnlockEventStore();
         var fixture = new GcSnapshot(
             new Dictionary<string, int> { ["total_kills"] = 10000 },
             new Dictionary<string, float>(),
@@ -114,10 +111,9 @@ public sealed class AchievementLibraryProjectionTests
     }
 
     [Fact]
-    public void SourceIsolationAndReopenedDatabasePreserveKnownStateAndHistory()
+    public void SourceIsolationAndNewMonitoringSessionForgetPriorHistory()
     {
-        string path = Database();
-        using (var store = new UnlockEventStore(path))
+        using (var store = new UnlockEventStore())
         {
             Assert.Empty(store.AcceptSnapshot(SourceOne,
                 Snapshot(("UNSTOPPABLE_FORCE", 1790000000)), When));
@@ -125,20 +121,21 @@ public sealed class AchievementLibraryProjectionTests
             Assert.Single(store.AcceptSnapshot(SourceOne,
                 Snapshot(("UNSTOPPABLE_FORCE", 1790000000),
                          ("IMMOVABLE_OBJECT", 1790000050)), When));
+            Assert.Equal(2, store.GetCurrentState(SourceOne).Achievements.Count);
+            Assert.True(store.GetCurrentState(SourceTwo).HasValidSnapshot);
+            Assert.Empty(store.GetRecent(SourceTwo));
         }
-        using var reopened = new UnlockEventStore(path);
-        Assert.Equal(2, reopened.GetCurrentState(SourceOne).Achievements.Count);
-        Assert.True(reopened.GetCurrentState(SourceTwo).HasValidSnapshot);
-        Assert.Empty(reopened.GetCurrentState(SourceTwo).Achievements);
+        using var reopened = new UnlockEventStore();
+        Assert.False(reopened.GetCurrentState(SourceOne).HasValidSnapshot);
+        Assert.False(reopened.GetCurrentState(SourceTwo).HasValidSnapshot);
         Assert.False(reopened.GetCurrentState("THIRD_SOURCE").HasValidSnapshot);
-        Assert.Single(reopened.GetRecent(SourceOne));
-        Assert.Empty(reopened.GetRecent(SourceTwo));
+        Assert.Empty(reopened.GetRecent(SourceOne));
     }
 
     [Fact]
     public void NewSnapshotChangesOnlyItsOwnCurrentStateWithoutReplayingBaseline()
     {
-        using var store = new UnlockEventStore(Database());
+        using var store = new UnlockEventStore();
         store.AcceptSnapshot(SourceOne,
             Snapshot(("UNSTOPPABLE_FORCE", 1790000000)), When);
         Assert.Single(store.AcceptSnapshot(SourceOne,
@@ -184,7 +181,7 @@ public sealed class AchievementLibraryProjectionTests
     [Fact]
     public void ClosingAndReopeningSourceDoesNotMakeMissingFileMeanReset()
     {
-        using var store = new UnlockEventStore(Database());
+        using var store = new UnlockEventStore();
         store.AcceptSnapshot(SourceOne,
             Snapshot(("KILL_WITH_OWN_GUN", 0)), When);
         // Missing/invalid/unavailable GCFileSource reads never call AcceptSnapshot.
