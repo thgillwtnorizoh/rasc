@@ -54,7 +54,8 @@ public sealed class UnlockEventStore : IDisposable
         schema.ExecuteNonQuery();
     }
 
-    public IReadOnlyList<UnlockEvent> AcceptSnapshot(string sourceKey, GcSnapshot snapshot, DateTimeOffset now)
+    public IReadOnlyList<UnlockEvent> AcceptSnapshot(string sourceKey, GcSnapshot snapshot,
+        DateTimeOffset now, bool recordNewUnlocks = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -93,7 +94,7 @@ public sealed class UnlockEventStore : IDisposable
                     "INSERT INTO achievement_state(source_key,achievement_id,unlock_seconds) VALUES($src,$id,$stamp)",
                     ("$src", sourceKey), ("$id", id), ("$stamp", (long)stamp)))
                     update.ExecuteNonQuery();
-                if (baseline || prior.ContainsKey(id)) continue;
+                if (baseline || !recordNewUnlocks || prior.ContainsKey(id)) continue;
                 var eventId = EventId(sourceKey, id, stamp);
                 using var insert = Query(tx, """
                     INSERT OR IGNORE INTO unlock_history
@@ -108,6 +109,67 @@ public sealed class UnlockEventStore : IDisposable
             return discovered;
         }
     }
+
+    /// <summary>
+    /// Commits real unlock events from the active GC journal. Their identity is
+    /// (source, process session, sequence), not the snapshot's second-precision
+    /// unlock timestamp. Re-reading or restarting never creates duplicates.
+    /// </summary>
+    public IReadOnlyList<UnlockEvent> AcceptJournal(string sourceKey,
+        IReadOnlyList<GcJournalUnlock> events, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
+        ArgumentNullException.ThrowIfNull(events);
+        if (events.Count == 0) return Array.Empty<UnlockEvent>();
+        lock (_sync)
+        {
+            using var tx = _connection.BeginTransaction();
+            // Journal records prove individual unlocks, NOT a complete snapshot.
+            // Do not mark the whole catalog as known/locked by creating a
+            // 'sources' row until achievements.txt has been validated.
+            bool hasSnapshot;
+            using (var lookup = Query(tx,
+                "SELECT 1 FROM sources WHERE source_key=$src LIMIT 1",
+                ("$src", sourceKey)))
+                hasSnapshot = lookup.ExecuteScalar() is not null;
+            var discovered = new List<UnlockEvent>();
+            foreach (var item in events)
+            {
+                var eventId = JournalEventId(sourceKey, item.Session, item.Sequence);
+                using var insert = Query(tx, """
+                    INSERT OR IGNORE INTO unlock_history
+                    (event_id,source_key,achievement_id,unlock_seconds,observed_ms,delivered_ms)
+                    VALUES($event,$src,$id,$stamp,$now,NULL)
+                    """, ("$event", eventId), ("$src", sourceKey),
+                    ("$id", item.AchievementId), ("$stamp", (long)item.UnlockUnixSeconds),
+                    ("$now", item.ObservedAt.ToUnixTimeMilliseconds()));
+                var isNew = insert.ExecuteNonQuery() == 1;
+                // An unsaved live unlock can precede achievements.txt. Reapply
+                // the journal's active awards on EVERY read, even when event
+                // identity is already stored, until the log is truncated.
+                if (hasSnapshot)
+                {
+                    using var state = Query(tx, """
+                        INSERT INTO achievement_state(source_key,achievement_id,unlock_seconds)
+                        VALUES($src,$id,$stamp)
+                        ON CONFLICT(source_key,achievement_id) DO UPDATE SET
+                          unlock_seconds=excluded.unlock_seconds
+                        """, ("$src", sourceKey), ("$id", item.AchievementId),
+                        ("$stamp", (long)item.UnlockUnixSeconds));
+                    state.ExecuteNonQuery();
+                }
+                if (isNew) discovered.Add(new UnlockEvent(eventId, sourceKey,
+                    item.AchievementId, item.UnlockUnixSeconds, item.ObservedAt));
+            }
+            tx.Commit();
+            return discovered;
+        }
+    }
+
+    public static string JournalEventId(string sourceKey, string session, ulong seq) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            sourceKey + "\\0journal\\0" + session + "\\0" +
+            seq.ToString(CultureInfo.InvariantCulture))));
 
     /// <summary>
     /// Reconstructs the last successfully committed snapshot for this exact GC source.

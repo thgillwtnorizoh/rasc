@@ -109,8 +109,8 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "GT-610 achievement statistics (achievements.txt)|achievements.txt|Text files (*.txt)|*.txt|All files (*.*)|*.*",
-            FileName = "achievements.txt",
+            Filter = "GC source (achievement_log or achievements.txt)|achievement_log;achievements.txt|All files (*.*)|*.*",
+            FileName = "achievement_log",
             CheckFileExists = true
         };
         if (dialog.ShowDialog(this) != true) return;
@@ -122,7 +122,7 @@ public partial class MainWindow : Window
         var root = InstallationDiscovery.GameRootFromAchievementsPath(dialog.FileName);
         if (root is null)
         {
-            StatusText.Text = "The source must be csgo_gc/achievements.txt next to csgo.exe.";
+            StatusText.Text = "Choose csgo_gc/achievement_log or csgo_gc/achievements.txt next to csgo.exe.";
             return;
         }
         SetManualGcRoot(root);

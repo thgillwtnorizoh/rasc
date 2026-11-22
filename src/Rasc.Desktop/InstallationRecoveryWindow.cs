@@ -64,10 +64,9 @@ internal sealed class InstallationRecoveryWindow : Window
             {
                 GcInstallState.MissingAchievements =>
                     "Found csgo_gc/ and csgo.exe together at:\n" + gc.GameRoot +
-                    "\n\nMissing: csgo_gc/achievements.txt. Download GT-610 csgo-gc " +
-                    "(or a compatible achievement-enabled version) if necessary. " +
-                    "If the GC is already installed, launch CS:GO and play a game " +
-                    "to try to generate achievements.txt.",
+                    "\n\nMissing: csgo_gc/achievement_log and csgo_gc/achievements.txt. " +
+                    "Enable achievement_log in a compatible GC and join a match, or " +
+                    "play until the legacy achievements.txt snapshot is created.",
                 GcInstallState.MissingLauncher =>
                     "The selected game folder is incomplete. Both csgo_gc/ and csgo.exe " +
                     "must be in the SAME folder.\n\nChecked: " + gc.GameRoot,

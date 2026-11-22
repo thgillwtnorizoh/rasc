@@ -8,14 +8,24 @@ public sealed class GcFileSource
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     public const int MaxBytes = 2_097_152;
     public string FilePath { get; }
+    public string JournalPath { get; }
     public string SourceKey { get; }
 
     public GcFileSource(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Select an achievements.txt path.", nameof(path));
         FilePath = Path.GetFullPath(path);
+        var name = Path.GetFileName(FilePath);
+        if (name.Equals(GcAchievementJournal.FileName, StringComparison.OrdinalIgnoreCase))
+            FilePath = Path.Combine(Path.GetDirectoryName(FilePath)!,
+                InstallationDiscovery.GcFilename);
+        JournalPath = Path.Combine(Path.GetDirectoryName(FilePath)!,
+            GcAchievementJournal.FileName);
         SourceKey = FilePath.ToUpperInvariant();
     }
+
+    public Task<GcJournalReadResult> ReadJournalAsync(CancellationToken ct = default) =>
+        GcAchievementJournal.ReadAsync(JournalPath, ct);
 
     public async Task<FileReadResult> ReadAsync(CancellationToken ct = default)
     {

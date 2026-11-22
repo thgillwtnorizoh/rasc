@@ -15,6 +15,7 @@ public sealed class AchievementMonitor : IAsyncDisposable
     private CancellationTokenSource? _cancel;
     private Task? _runner;
     private GcCurrentAchievementState? _lastSignaledState;
+    private bool _snapshotObservedThisRun;
 
     public event EventHandler<UnlockEvent>? UnlockDetected;
     /// <summary>One ordered, source-confirmed reconciliation burst; replaces per-award UI dispatch.</summary>
@@ -39,10 +40,14 @@ public sealed class AchievementMonitor : IAsyncDisposable
         {
             _watcher = new FileSystemWatcher(directory)
             {
-                Filter = Path.GetFileName(_source.FilePath),
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                 IncludeSubdirectories = false
             };
+            // Avoid opening the snapshot repeatedly on unrelated temp-file
+            // writes (including the GC writer's atomic replacement staging).
+            _watcher.Filters.Clear(); // remove any implicit wildcard filter
+            _watcher.Filters.Add(Path.GetFileName(_source.FilePath));
+            _watcher.Filters.Add(Path.GetFileName(_source.JournalPath));
             _watcher.Changed += OnChanged;
             _watcher.Created += OnChanged;
             _watcher.Deleted += OnChanged;
@@ -77,25 +82,41 @@ public sealed class AchievementMonitor : IAsyncDisposable
         {
             try
             {
+                // Journal existence takes priority even if the file is empty.
+                // Invalid/unavailable journal reads fail closed, NOT snapshot fallback.
+                var journal = await _source.ReadJournalAsync(ct);
                 var read = await _source.ReadAsync(ct);
-                if (read.Status == ReadStatus.Valid && read.Snapshot is not null)
+                var usingJournal = journal.Status == ReadStatus.Valid;
+                if (journal.Status is ReadStatus.Invalid or ReadStatus.Unavailable)
                 {
-                    _store.AcceptSnapshot(_source.SourceKey, read.Snapshot, DateTimeOffset.UtcNow);
-                    // Only publish a source-confirmed state AFTER the SQLite transaction.
-                    // No callback on missing/invalid reads; retain the last valid snapshot.
-                    var committed = new GcCurrentAchievementState(true,
-                        read.Snapshot.Achievements.ToDictionary(
-                            pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
-                    if (_lastSignaledState is null || !SameAchievements(_lastSignaledState, committed))
+                    StatusChanged?.Invoke(this, $"Journal {journal.Status}: {journal.Detail}");
+                }
+                else if (usingJournal || read.Status == ReadStatus.Valid)
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    if (read.Status == ReadStatus.Valid && read.Snapshot is not null)
+                    {
+                        // A journal can arrive before the first snapshot. Baseline
+                        // that later snapshot silently instead of replaying old
+                        // achievements when the journal disappears.
+                        _store.AcceptSnapshot(_source.SourceKey, read.Snapshot, now,
+                            recordNewUnlocks: !usingJournal && _snapshotObservedThisRun);
+                        _snapshotObservedThisRun = true;
+                    }
+                    if (usingJournal)
+                        _store.AcceptJournal(_source.SourceKey, journal.Unlocks, now);
+
+                    // Publish the actual committed state after both sources. Live
+                    // unlocks can precede achievements.txt persistence.
+                    var committed = _store.GetCurrentState(_source.SourceKey);
+                    if (committed.HasValidSnapshot &&
+                        (_lastSignaledState is null || !SameAchievements(_lastSignaledState, committed)))
                     {
                         _lastSignaledState = committed;
                         CurrentStateChanged?.Invoke(this, committed);
                     }
-                    // Snapshot and history were committed before notification. Deliver
-                    // the entire pending burst in one UI callback, preventing a heavily
-                    // loaded fullscreen Dispatcher from splitting a 3-award burst across
-                    // multiple 45ms Modern admission windows. Existing single-event
-                    // listeners remain supported; MainWindow uses only the batch.
+                    // Preserve the original single ordered batch and at-least-once
+                    // delivery contract for the UI, regardless of source choice.
                     var pending = _store.GetPending(_source.SourceKey);
                     if (!ct.IsCancellationRequested && pending.Count > 0)
                         UnlockBatchDetected?.Invoke(this, pending);
@@ -105,7 +126,10 @@ public sealed class AchievementMonitor : IAsyncDisposable
                         UnlockDetected?.Invoke(this, evt);
                         _store.MarkDelivered(evt.EventId, DateTimeOffset.UtcNow);
                     }
-                    StatusChanged?.Invoke(this, $"Monitoring — {read.Snapshot.Achievements.Count} unlocked in current file.");
+                    StatusChanged?.Invoke(this, usingJournal
+                        ? $"Monitoring achievement_log — {journal.Unlocks.Count} event(s); " +
+                          (read.Status == ReadStatus.Valid ? "GC snapshot available." : "awaiting GC snapshot.")
+                        : $"Monitoring achievements.txt — {read.Snapshot!.Achievements.Count} unlocked.");
                 }
                 else StatusChanged?.Invoke(this, $"{read.Status}: {read.Detail}");
             }
