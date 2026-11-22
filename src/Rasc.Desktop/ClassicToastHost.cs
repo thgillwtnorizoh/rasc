@@ -41,6 +41,18 @@ internal sealed class ClassicToastHost : IDisposable
     private double _appliedIntervalSeconds;
     private TimeSpan? _lastAppliedAt;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private readonly Dispatcher _dispatcher;
+    // WPF may synchronously reenter Rendering during HWND resize/layout;
+    // advancing the scheduler while an older frame batch is still being
+    // materialized used to retire card content needed by that outer batch.
+    private bool _tickActive;
+    private bool _tickQueued;
+    private long _tickDeferrals;
+    internal TimeSpan? TimeOverrideForSmoke { get; set; }
+    internal Action? FramesCapturedForSmoke { get; set; }
+    internal long TickDeferralsForSmoke => _tickDeferrals;
+    internal void AdvanceForSmoke() => Tick();
+    private TimeSpan ClockTime => TimeOverrideForSmoke ?? _clock.Elapsed;
     private ClassicToastStackWindow? _window;
     private bool _renderSubscribed;
     private bool _disposed;
@@ -54,6 +66,7 @@ internal sealed class ClassicToastHost : IDisposable
 
     internal ClassicToastHost(Dispatcher dispatcher)
     {
+        _dispatcher = dispatcher;
         _holdWake = new DispatcherTimer(DispatcherPriority.Normal, dispatcher);
         _holdWake.Tick += OnHoldWake;
         _anchorWake = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
@@ -139,7 +152,7 @@ internal sealed class ClassicToastHost : IDisposable
             if (render.RenderingTime == _previousRenderTime) return;
             _previousRenderTime = render.RenderingTime;
         }
-        var at = _clock.Elapsed;
+        var at = ClockTime;
         if (_previousCallbackAt is { } last && at > last)
         {
             var gap = at - last;
@@ -182,7 +195,7 @@ internal sealed class ClassicToastHost : IDisposable
     private void OnAnimationFallback(object? sender, EventArgs e)
     {
         if (_disposed || !_renderSubscribed) return;
-        var at = _clock.Elapsed;
+        var at = ClockTime;
         // Normal WPF composition remains the primary clock. The timer only
         // advances the state after rendering callbacks have gone quiet; it
         // does not impose an additional 60Hz ceiling on healthy renderers.
@@ -238,7 +251,7 @@ internal sealed class ClassicToastHost : IDisposable
     {
         var next = _schedule.NextHoldDeadline;
         if (!next.HasValue) return;
-        var remaining = next.Value - _clock.Elapsed;
+        var remaining = next.Value - ClockTime;
         _holdWake.Interval = TimeSpan.FromMilliseconds(
             Math.Clamp(Math.Ceiling(remaining.TotalMilliseconds), 1.0, 60_000.0));
         _holdWake.Stop();
@@ -248,7 +261,50 @@ internal sealed class ClassicToastHost : IDisposable
     private void Tick()
     {
         if (_disposed) return;
-        var frames = _schedule.Advance(_clock.Elapsed);
+        if (_tickActive)
+        {
+            // Never overwrite/retire a frame's content from a nested callback.
+            // Defer the new clock and UI state until the outer batch completes.
+            _tickQueued = true;
+            _tickDeferrals++;
+            if (_tickDeferrals <= 8 || _tickDeferrals % 100 == 0)
+                AppLog.Warning("classic.reentry",
+                    $"deferred nested Tick; total={_tickDeferrals}");
+            return;
+        }
+
+        _tickActive = true;
+        try
+        {
+            var passes = 0;
+            do
+            {
+                _tickQueued = false;
+                TickCore();
+                if (++passes >= 16 && _tickQueued)
+                {
+                    // Avoid an infinite synchronous resize/render feedback loop.
+                    // A queued follow-up happens after the current WPF event.
+                    _ = _dispatcher.BeginInvoke(new Action(Tick),
+                        DispatcherPriority.Background);
+                    break;
+                }
+            }
+            while (_tickQueued && !_disposed);
+        }
+        finally
+        {
+            _tickActive = false;
+        }
+    }
+
+    private void TickCore()
+    {
+        if (_disposed) return;
+        var frames = _schedule.Advance(ClockTime);
+        // Test seam proves stale frame snapshots are never accessed after a
+        // nested WPF callback moves the scheduler and retires card content.
+        FramesCapturedForSmoke?.Invoke();
         _window?.PositionOnForegroundApp();
         var visible = new HashSet<string>(frames.Select(f => f.Event.EventId),
             StringComparer.Ordinal);
@@ -295,7 +351,16 @@ internal sealed class ClassicToastHost : IDisposable
                 }
                 if (!_cards.TryGetValue(frame.Event.EventId, out var card))
                 {
-                    var content = _text[frame.Event.EventId];
+                    if (!_text.TryGetValue(frame.Event.EventId, out var content))
+                    {
+                        // Guard against any future scheduler/content drift as
+                        // well as callback reentrancy. Never terminate the app
+                        // because a stale card ID is no longer in the cache.
+                        AppLog.Error("classic.invariant",
+                            $"frame lacked cached content; stage={frame.Stage}; " +
+                            $"slot={frame.Slot}; frames={frames.Count}");
+                        continue;
+                    }
                     card = new ClassicToastCard(content.Title, content.Description, content.IconJpeg);
                     card.ApplyFontChoice(_fontChoice);
                     _cards.Add(frame.Event.EventId, card);
