@@ -21,15 +21,18 @@ public sealed class ClassicToastScheduler
 
     private enum MotionKind { Enter, Exit }
 
-    private sealed class Card(UnlockEvent evt)
+    // Complete presentation data lives with the single scheduler-owned card,
+    // never in a second host dictionary with a separate retirement lifecycle.
+    private sealed class Card(UnlockEvent evt, ClassicToastContent content)
     {
         public UnlockEvent Event { get; } = evt;
+        public ClassicToastContent Content { get; } = content;
         public TimeSpan Expiration { get; set; } = TimeSpan.MaxValue;
     }
 
     private sealed record Motion(MotionKind Kind, Card Card, int Slot, TimeSpan Start);
     private readonly List<Card> _settled = []; // newest (bottom) at index 0
-    private readonly Queue<UnlockEvent> _waiting = new();
+    private readonly Queue<Card> _waiting = new();
     private readonly HashSet<string> _tracked = new(StringComparer.Ordinal);
     private Motion? _motion;
     private bool _clockStarted;
@@ -52,13 +55,17 @@ public sealed class ClassicToastScheduler
             ? _settled.Min(card => card.Expiration)
             : null;
 
-    public bool Enqueue(UnlockEvent evt)
+    public bool Enqueue(UnlockEvent evt) =>
+        Enqueue(evt, new ClassicToastContent("Achievement Unlocked!", evt.AchievementId));
+
+    public bool Enqueue(UnlockEvent evt, ClassicToastContent content)
     {
         ArgumentNullException.ThrowIfNull(evt);
+        ArgumentNullException.ThrowIfNull(content);
         if (string.IsNullOrWhiteSpace(evt.EventId))
             throw new ArgumentException("Notification event must have a stable ID.", nameof(evt));
         if (!_tracked.Add(evt.EventId)) return false;
-        _waiting.Enqueue(evt);
+        _waiting.Enqueue(new Card(evt, content));
         return true;
     }
 
@@ -67,16 +74,25 @@ public sealed class ClassicToastScheduler
     /// its actual deadline before evaluating later transitions. Stable FIFO is preserved.
     /// All visible pixels remain opaque; ClipTop/ClipBottom describe occlusion.
     /// </summary>
-    public IReadOnlyList<ClassicToastFrame> Advance(TimeSpan now)
+    public IReadOnlyList<ClassicToastFrame> Advance(TimeSpan now) =>
+        AdvancePresentation(now).Frames;
+
+    /// <summary>
+    /// Return a complete read-only presentation transaction: content, geometry,
+    /// timeline state and once-only transitions. WPF cannot mutate the scheduler
+    /// or look up a card that may already have retired.
+    /// </summary>
+    public ClassicToastPresentationSnapshot AdvancePresentation(TimeSpan now)
     {
         if (now < TimeSpan.Zero || (_clockStarted && now < _previous))
             throw new ArgumentOutOfRangeException(nameof(now), "Time must be monotonic.");
 
+        var transitions = new List<ClassicToastTransition>();
         var cursor = _clockStarted ? _previous : TimeSpan.Zero;
         _clockStarted = true;
         _previous = now;
 
-        for (var transitions = 0; transitions < 100000; transitions++)
+        for (var transitionCount = 0; transitionCount < 100000; transitionCount++)
         {
             if (_motion is { } motion)
             {
@@ -87,11 +103,15 @@ public sealed class ClassicToastScheduler
                 {
                     motion.Card.Expiration = end + Display;
                     _settled.Insert(0, motion.Card);
+                    transitions.Add(new ClassicToastTransition(motion.Card.Event,
+                        ClassicToastTransitionKind.Settled, motion.Slot));
                 }
                 else
                 {
                     _settled.Remove(motion.Card);
                     _tracked.Remove(motion.Card.Event.EventId);
+                    transitions.Add(new ClassicToastTransition(motion.Card.Event,
+                        ClassicToastTransitionKind.Retired, motion.Slot));
                 }
                 _motion = null;
                 cursor = end;
@@ -102,8 +122,10 @@ public sealed class ClassicToastScheduler
             // expiring the next survivor. This is a documented ENGINEERING policy.
             if (_waiting.Count > 0 && _settled.Count < Capacity)
             {
-                var incoming = new Card(_waiting.Dequeue());
+                var incoming = _waiting.Dequeue();
                 _motion = new Motion(MotionKind.Enter, incoming, 0, cursor);
+                transitions.Add(new ClassicToastTransition(incoming.Event,
+                    ClassicToastTransitionKind.Started, 0));
                 continue;
             }
 
@@ -123,6 +145,8 @@ public sealed class ClassicToastScheduler
                 var card = _settled[expired];
                 var start = card.Expiration > cursor ? card.Expiration : cursor;
                 _motion = new Motion(MotionKind.Exit, card, expired, start);
+                transitions.Add(new ClassicToastTransition(card.Event,
+                    ClassicToastTransitionKind.ExitStarted, expired));
                 continue;
             }
             break;
@@ -160,26 +184,29 @@ public sealed class ClassicToastScheduler
                     }
                 }
             }
-            frames.Add(Frame(card.Event, i, stage, y, clipBottomScreen));
+            frames.Add(Frame(card, i, stage, y, clipBottomScreen));
         }
 
         if (_motion is { Kind: MotionKind.Enter } entering)
         {
             var y = ViewportHeight - CardHeight * progress;
-            frames.Add(Frame(entering.Card.Event, 0, ClassicToastStage.Entering,
+            frames.Add(Frame(entering.Card, 0, ClassicToastStage.Entering,
                 y, ViewportHeight));
         }
-        return frames;
+        return new ClassicToastPresentationSnapshot(
+            frames.AsReadOnly(), transitions.AsReadOnly(),
+            IsAnimating, IsIdle, NextHoldDeadline);
     }
 
-    private static ClassicToastFrame Frame(UnlockEvent evt, int slot,
+    private static ClassicToastFrame Frame(Card card, int slot,
         ClassicToastStage stage, double y, double absoluteClipBottom)
     {
         // Local clip coordinates; if a card descends behind another, the
         // part under the lower card's top edge becomes invisible.
         var top = Math.Clamp(-y, 0, CardHeight);
         var bottom = Math.Clamp(absoluteClipBottom - y, 0, CardHeight);
-        return new ClassicToastFrame(evt, slot, stage, y, top, Math.Max(top, bottom));
+        return new ClassicToastFrame(card.Event, slot, stage, y, top,
+            Math.Max(top, bottom)) { Content = card.Content };
     }
 
     public void Clear()
@@ -191,7 +218,39 @@ public sealed class ClassicToastScheduler
     }
 }
 
+/// <summary>
+/// Value data captured once at admission. Callers cannot mutate the stored icon
+/// bytes, and the content remains alive as long as a returned frame is alive,
+/// even when its scheduler card is later retired.
+/// </summary>
+public sealed class ClassicToastContent
+{
+    private readonly byte[]? _icon;
+    public string Title { get; }
+    public string Description { get; }
+
+    public ClassicToastContent(string title, string description, byte[]? iconJpeg = null)
+    {
+        Title = title ?? string.Empty;
+        Description = description ?? string.Empty;
+        _icon = iconJpeg?.ToArray();
+    }
+
+    public byte[]? CopyIconJpeg() => _icon?.ToArray();
+}
+
 public enum ClassicToastStage { Entering, Visible, Exiting }
+public enum ClassicToastTransitionKind { Started, Settled, ExitStarted, Retired }
+
+public sealed record ClassicToastTransition(
+    UnlockEvent Event, ClassicToastTransitionKind Kind, int Slot);
+
+public sealed record ClassicToastPresentationSnapshot(
+    IReadOnlyList<ClassicToastFrame> Frames,
+    IReadOnlyList<ClassicToastTransition> Transitions,
+    bool IsAnimating,
+    bool IsIdle,
+    TimeSpan? NextHoldDeadline);
 
 /// <param name="Y">Card top in the shared viewport (0 = top, 3H = taskbar edge).</param>
 /// <param name="ClipTop">Visible local top edge, inclusive.</param>
@@ -204,6 +263,9 @@ public sealed record ClassicToastFrame(
     double ClipTop,
     double ClipBottom)
 {
+    // Full source-backed content, not an ID that requires a mutable WPF lookup.
+    // Nullable only to retain compatibility for existing geometry-only fixtures.
+    public ClassicToastContent? Content { get; init; }
     public double VisibleHeight => Math.Max(0, ClipBottom - ClipTop);
     public double Opacity => 1.0;
 }
