@@ -29,12 +29,14 @@ public partial class MainWindow : Window
     private bool _customizationControlsReady;
     private UnlockEventStore? _store;
     private AchievementMonitor? _monitor;
+    private string? _lastDiagnosticMonitorPhase;
     private bool _canClose;
     private bool _closing;
 
     public MainWindow()
     {
         InitializeComponent();
+        AppLog.Info("window", "MainWindow constructed");
         _locationStore = new InstallationLocationStore(
             Path.Combine(_localDirectory, "installation-locations.json"));
         _locations = _locationStore.Load();
@@ -80,6 +82,7 @@ public partial class MainWindow : Window
             }
         }
         _profileControlsReady = true;
+        AppLog.Info("settings", $"profile={_profile}; fps={_presentationSettings.AnimationFps}; scale={_presentationSettings.PopupSizePercent}");
         SelectAppearancePreference(AnimationFpsBox, _presentationSettings.AnimationFps);
         SelectAppearancePreference(PopupSizeBox, _presentationSettings.PopupSizePercent);
         _presentationControlsReady = true;
@@ -133,6 +136,8 @@ public partial class MainWindow : Window
         try
         {
             if (!CheckGcPathBeforeMonitoring()) return;
+            AppLog.Info("monitor", "start requested; journal preferred; no persisted replay");
+            _lastDiagnosticMonitorPhase = null;
             var source = new GcFileSource(PathBox.Text);
             LoadLiveAchievementMetadata(source.FilePath);
             // A monitoring run is a NEW observation session. Never replay
@@ -144,14 +149,19 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(_localDirectory);
             File.WriteAllText(Path.Combine(_localDirectory, "last-source.txt"), source.FilePath);
             _monitor = new AchievementMonitor(source, _store);
+            _monitor.InternalError += (_, error) =>
+                AppLog.Error("monitor.exception", error.ToString());
             _monitor.CurrentStateChanged += (_, state) =>
                 Dispatcher.BeginInvoke(new Action(() => OnCommittedLibrarySnapshot(state)));
             // Use ONE UI dispatch for one source-confirmed GC reconciliation burst.
             // Otherwise individual Dispatcher.Invoke callbacks could exceed Modern's
             // 45ms admission window under fullscreen load, leaving later awards
             // waiting for the entire previous 5.6s wave to finish.
-            _monitor.UnlockBatchDetected += (_, burst) => Dispatcher.Invoke(() =>
+            _monitor.UnlockBatchDetected += (_, burst) =>
             {
+                AppLog.Info("monitor.batch", $"accepted={burst.Count}");
+                Dispatcher.Invoke(() =>
+                {
                 if (_closing || burst.Count == 0) return;
                 var newlyEarned = burst.ToArray();
                 foreach (var item in newlyEarned)
@@ -178,13 +188,37 @@ public partial class MainWindow : Window
                         }
                     });
                 }
-            });
-            _monitor.StatusChanged += (_, message) => Dispatcher.BeginInvoke(new Action(() =>
+                });
+            };
+            _monitor.StatusChanged += (_, message) =>
+            {
+                // Avoid logging the 250ms monitor poll loop verbatim. Only
+                // source-mode changes and warning classes matter for diagnosis.
+                var phase = message.StartsWith("Monitoring achievement_log", StringComparison.Ordinal)
+                    ? "journal"
+                    : message.StartsWith("Monitoring achievements.txt", StringComparison.Ordinal)
+                        ? "snapshot-fallback"
+                        : message.StartsWith("Monitoring error:", StringComparison.Ordinal)
+                            ? "monitor-error"
+                            : message.StartsWith("Journal Invalid:", StringComparison.Ordinal)
+                                ? "journal-invalid"
+                                : message.StartsWith("Journal Unavailable:", StringComparison.Ordinal)
+                                    ? "journal-unavailable" : "other";
+                if (!string.Equals(phase, _lastDiagnosticMonitorPhase, StringComparison.Ordinal))
+                {
+                    _lastDiagnosticMonitorPhase = phase;
+                    if (phase is "monitor-error" or "journal-invalid" or "journal-unavailable")
+                        AppLog.Warning("monitor.status", $"status={phase}");
+                    else AppLog.Info("monitor.status", $"status={phase}");
+                }
+                Dispatcher.BeginInvoke(new Action(() =>
             {
                 StatusText.Text = message;
                 _libraryWindow?.SetSourceStatus(message);
-            }));
+                }));
+            };
             await _monitor.StartAsync();
+            AppLog.Info("monitor", "started");
             StartButton.IsEnabled = false;
             PathBox.IsEnabled = false;
             StopButton.IsEnabled = true;
@@ -193,6 +227,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            AppLog.Fatal("monitor.start.failure", ex);
             StatusText.Text = "Could not start: " + ex.Message;
             if (_monitor is not null) { await _monitor.DisposeAsync(); _monitor = null; }
         }
@@ -200,6 +235,7 @@ public partial class MainWindow : Window
 
     private async void Stop_Click(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("monitor", "stop requested");
         StopButton.IsEnabled = false;
         if (_monitor is not null)
         {
@@ -209,6 +245,7 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = true;
         PathBox.IsEnabled = true;
         StatusText.Text = "Monitoring stopped.";
+        AppLog.Info("monitor", "stopped");
         _libraryWindow?.SetSourceStatus(
             "Monitoring stopped. Showing last successfully committed GC state (if any).");
     }
@@ -224,6 +261,7 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (_closing) return; // coalesce repeated close clicks while shutdown is already running
         _closing = true;
+        AppLog.Info("shutdown", "Window.Closing initial");
         ShutdownTrace.Begin();
         ShutdownTrace.Mark("Window.Closing (initial)");
 
@@ -272,18 +310,19 @@ public partial class MainWindow : Window
 
             try
             {
-                ShutdownTrace.Mark("SQLite.Dispose begin");
+                ShutdownTrace.Mark("AchievementStore.Dispose begin");
                 _store?.Dispose();
                 _store = null;
-                ShutdownTrace.Mark("SQLite.Dispose complete");
+                ShutdownTrace.Mark("AchievementStore.Dispose complete");
             }
             catch (Exception ex)
             {
-                ShutdownTrace.Mark("SQLite dispose error: " + ex.GetType().Name);
+                ShutdownTrace.Mark("AchievementStore dispose error: " + ex.GetType().Name);
             }
 
             _canClose = true;
             ShutdownTrace.Mark("Final close scheduled");
+            AppLog.Info("shutdown", "final close scheduled");
             // Avoid re-entering Window.Close during the initial Closing callback.
             _ = Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.Normal);
         }
@@ -469,14 +508,18 @@ public partial class MainWindow : Window
         // Invoked by the active host ONLY on actual card/wave entrance;
         // settings changes, holds and animation frames don't retrigger sound.
         if (_customization.Sound == NotificationSoundChoice.Off) return;
+        AppLog.Info("sound", $"cue requested; type={_customization.Sound}");
         var path = NotificationSoundFiles.Resolve(_customization,
             _localDirectory, AppContext.BaseDirectory, _steam.Root);
         if (path is null)
         {
+            AppLog.Warning("sound", "selected sound unavailable");
             UpdateSoundAvailability();
             return;
         }
-        if (!_soundPlayback.Play(path))
+        var played = _soundPlayback.Play(path);
+        AppLog.Info("sound", played ? "cue played" : "cue failed");
+        if (!played)
             StatusText.Text = "Notification sound could not play; check the selected audio codec.";
     }
 
@@ -561,13 +604,21 @@ public partial class MainWindow : Window
             !Enum.IsDefined(profile)) return;
         if (_profile == profile) return;
         _profile = profile;
+        AppLog.Info("settings", $"profile changed to {profile}");
         if (!_profileStore.TrySave(profile))
             StatusText.Text = "Popup profile changed this session, but could not be saved.";
     }
 
     private void QueuePresentation(NotificationProfile profile, Action show)
     {
-        _presentationGate.Enqueue(profile, show);
+        AppLog.Info("presentation.queue", $"enqueue; profile={profile}");
+        _presentationGate.Enqueue(profile, () =>
+        {
+            AppLog.Info("presentation.dispatch", $"begin; profile={profile}");
+            show();
+            AppLog.Info("presentation.dispatch", $"returned; profile={profile}");
+        });
+        AppLog.Info("presentation.queue", $"after pump; pending={_presentationGate.PendingCount}");
         if (_presentationGate.PendingCount > 0)
         {
             _presentationWake.Start();

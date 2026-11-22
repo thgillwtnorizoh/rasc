@@ -27,6 +27,8 @@ public sealed class AchievementMonitor : IAsyncDisposable
     public event EventHandler<IReadOnlyList<UnlockEvent>>? UnlockBatchDetected;
     public event EventHandler<GcCurrentAchievementState>? CurrentStateChanged;
     public event EventHandler<string>? StatusChanged;
+    /// <summary>Full exception for local diagnostics; status UI remains sanitized.</summary>
+    public event EventHandler<Exception>? InternalError;
 
     public AchievementMonitor(GcFileSource source, UnlockEventStore store, TimeSpan? interval = null)
     {
@@ -149,6 +151,7 @@ public sealed class AchievementMonitor : IAsyncDisposable
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
+                InternalError?.Invoke(this, ex);
                 StatusChanged?.Invoke(this, $"Monitoring error: {ex.Message}");
             }
             try
