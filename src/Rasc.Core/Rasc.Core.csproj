@@ -6,11 +6,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
-    <!-- Keep native SQLite above the vulnerable 2.1.11 transitive dependency. -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
-  </ItemGroup>
-  <ItemGroup>
     <!-- The same plain CSV is embedded for zero-setup fallback and copied beside
          the application so owners can edit rarity without recompiling. -->
     <EmbeddedResource Include="Data/achievement-definitions.v0.2.csv"

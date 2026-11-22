@@ -5,167 +5,126 @@ namespace Rasc.Core.Tests;
 
 public sealed class EventStoreTests
 {
-    private static GcSnapshot Snapshot(params (string name, uint stamp)[] awards) =>
+    private const string Source = "CSGO/CSGO_GC/ACHIEVEMENTS.TXT";
+    private static readonly DateTimeOffset Now =
+        DateTimeOffset.FromUnixTimeSeconds(1795260000);
+    private static GcSnapshot Snapshot(params (string id, uint stamp)[] a) =>
         new(new Dictionary<string, int>(), new Dictionary<string, float>(),
-            awards.ToDictionary(x => x.name, x => x.stamp, StringComparer.Ordinal));
+            a.ToDictionary(x => x.id, x => x.stamp, StringComparer.Ordinal));
+    private static GcJournalUnlock Award(string session, ulong seq,
+        string id, uint stamp) => new(session, seq, id, stamp, Now);
 
-    private static string NewDatabase() =>
-        Path.Combine(Path.GetTempPath(), "rasc-test-" + Guid.NewGuid().ToString("N") + ".db");
-    private const string Source = "C:\\CSGO\\CSGO_GC\\ACHIEVEMENTS.TXT";
-    private static readonly DateTimeOffset Now = DateTimeOffset.FromUnixTimeSeconds(1_794_738_859);
-
-    [Fact] public void FirstSnapshotIsNonNotifyingBaseline()
+    [Fact]
+    public void FirstSnapshotIsSilentAndFutureLegacyDiffsAreOrdered()
     {
-        using var store = new UnlockEventStore(NewDatabase());
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("A", 1), ("B", 2)), Now));
+        using var store = new UnlockEventStore();
+        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("A", 1)), Now));
         Assert.Empty(store.GetPending(Source));
         Assert.Empty(store.GetRecent(Source));
-    }
-
-    [Fact] public void NewAchievementsAreEmittedOnlyOnce()
-    {
-        using var store = new UnlockEventStore(NewDatabase());
-        store.AcceptSnapshot(Source, Snapshot(("A", 1)), Now);
-        var events = store.AcceptSnapshot(Source, Snapshot(("A", 1), ("B", 2), ("C", 3)), Now);
-        Assert.Equal(2, events.Count);
+        var events = store.AcceptSnapshot(Source,
+            Snapshot(("A", 1), ("C", 3), ("B", 2)), Now);
         Assert.Equal(new[] { "B", "C" }, events.Select(x => x.AchievementId));
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("A", 1), ("B", 2), ("C", 3)), Now));
-        Assert.Equal(2, store.GetPending(Source).Count);
-        store.MarkDelivered(events[0].EventId, Now);
-        Assert.Single(store.GetPending(Source));
-    }
-
-    [Fact] public void RestartPreservesDeduplicationAndPendingDelivery()
-    {
-        var db = NewDatabase();
-        string eventId;
-        using (var first = new UnlockEventStore(db))
-        {
-            first.AcceptSnapshot(Source, Snapshot(("A", 1)), Now);
-            eventId = Assert.Single(first.AcceptSnapshot(Source, Snapshot(("A", 1), ("B", 2)), Now)).EventId;
-        }
-        using (var restored = new UnlockEventStore(db))
-        {
-            Assert.Equal(eventId, Assert.Single(restored.GetPending(Source)).EventId);
-            Assert.Empty(restored.AcceptSnapshot(Source, Snapshot(("A", 1), ("B", 2)), Now));
-            restored.MarkDelivered(eventId, Now);
-        }
-        using var reopened = new UnlockEventStore(db);
-        Assert.Empty(reopened.GetPending(Source));
-        Assert.Single(reopened.GetRecent(Source));
-    }
-
-    [Fact] public void MissingThenReawardSameTimestampDoesNotDuplicate()
-    {
-        using var store = new UnlockEventStore(NewDatabase());
-        store.AcceptSnapshot(Source, Snapshot(), Now);
-        var first = Assert.Single(store.AcceptSnapshot(Source, Snapshot(("A", 7)), Now));
-        store.AcceptSnapshot(Source, Snapshot(), Now);
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("A", 7)), Now));
-        store.AcceptSnapshot(Source, Snapshot(), Now);
-        var second = Assert.Single(store.AcceptSnapshot(Source, Snapshot(("A", 8)), Now));
-        Assert.NotEqual(first.EventId, second.EventId);
-    }
-
-    [Fact]
-    public void BurstUsesAuthoritativeUnlockTimestampThenStableTieBreakAndPersistsDeliveryOrder()
-    {
-        using var store = new UnlockEventStore(NewDatabase());
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(), Now));
-        var first = store.AcceptSnapshot(Source,
-            Snapshot(("Z_FIRST", 50), ("A_LATEST", 52), ("B_SECOND", 51),
-                     ("X_UNKNOWN_TIME", 0), ("C_TIE", 51)), Now);
-        var expected = new[] { "Z_FIRST", "B_SECOND", "C_TIE", "A_LATEST", "X_UNKNOWN_TIME" };
-        Assert.Equal(expected, first.Select(e => e.AchievementId));
-        // Hash-based event IDs MUST NOT reorder simultaneous GC awards.
-        Assert.Equal(expected, store.GetPending(Source).Select(e => e.AchievementId));
-        Assert.Equal(expected.Reverse(), store.GetRecent(Source).Select(e => e.AchievementId));
-        foreach (var evt in first) store.MarkDelivered(evt.EventId, Now);
+        Assert.Equal(new[] { "B", "C" },
+            store.GetPending(Source).Select(x => x.AchievementId));
+        foreach (var evt in events) store.MarkDelivered(evt.EventId, Now);
         Assert.Empty(store.GetPending(Source));
-        Assert.Empty(store.AcceptSnapshot(Source,
-            Snapshot(("X_UNKNOWN_TIME", 0), ("C_TIE", 51), ("A_LATEST", 52),
-                     ("B_SECOND", 51), ("Z_FIRST", 50)), Now));
     }
 
-    [Fact] public void DifferentSourcesHaveIndependentBaselines()
-    {
-        using var store = new UnlockEventStore(NewDatabase());
-        store.AcceptSnapshot("ONE", Snapshot(("A", 1)), Now);
-        store.AcceptSnapshot("TWO", Snapshot(("A", 1)), Now);
-        Assert.Empty(store.GetRecent("ONE"));
-        Assert.Single(store.AcceptSnapshot("TWO", Snapshot(("A", 1), ("B", 2)), Now));
-        Assert.Empty(store.GetRecent("ONE"));
-    }
     [Fact]
-    public void JournalEventIdentityIsStableAcrossReadsAndRestarts()
+    public void NewMonitoringSessionHasNoSavedPendingEventsOrHistory()
     {
-        var db = NewDatabase();
-        var incoming = new[]
+        using (var first = new UnlockEventStore())
         {
-            new GcJournalUnlock("session-a", 11, "A", 10, Now),
-            new GcJournalUnlock("session-a", 12, "B", 10, Now)
-        };
-        string firstId;
-        using (var store = new UnlockEventStore(db))
-        {
-            Assert.Empty(store.AcceptSnapshot(Source, Snapshot(), Now, recordNewUnlocks: false));
-            var events = store.AcceptJournal(Source, incoming, Now);
-            Assert.Equal(new[] { "A", "B" }, events.Select(e => e.AchievementId));
-            firstId = events[0].EventId;
-            Assert.Empty(store.AcceptJournal(Source, incoming, Now));
-            Assert.Equal(2, store.GetRecent(Source).Count);
-            Assert.True(store.GetCurrentState(Source).Achievements.ContainsKey("A"));
-            store.MarkDelivered(firstId, Now);
+            first.AcceptSnapshot(Source, Snapshot(), Now);
+            Assert.Single(first.AcceptSnapshot(Source, Snapshot(("OLD", 4)), Now));
+            Assert.Single(first.GetPending(Source));
         }
-        using (var reopened = new UnlockEventStore(db))
-        {
-            Assert.Empty(reopened.AcceptJournal(Source, incoming, Now));
-            var fresh = Assert.Single(reopened.AcceptJournal(Source,
-                [new GcJournalUnlock("session-b", 1, "A", 10, Now)], Now));
-            Assert.NotEqual(firstId, fresh.EventId);
-            Assert.Equal(3, reopened.GetRecent(Source).Count);
-            Assert.Equal(2, reopened.GetPending(Source).Count);
-        }
+        using var restarted = new UnlockEventStore();
+        Assert.Empty(restarted.GetPending(Source));
+        Assert.Empty(restarted.GetRecent(Source));
+        Assert.Empty(restarted.AcceptSnapshot(Source, Snapshot(("OLD", 4)), Now));
+        Assert.Empty(restarted.GetPending(Source));
     }
 
     [Fact]
-    public void SilentJournalSnapshotUpdateCannotGeneratePhantomFallbackAwards()
+    public void InitialJournalRowsAreSilentlyAcknowledgedThenOnlyNewRowsNotify()
     {
-        using var store = new UnlockEventStore(NewDatabase());
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("OLD", 1)), Now,
-            recordNewUnlocks: false));
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("OLD", 1), ("B", 2)), Now,
-            recordNewUnlocks: false));
-        Assert.Single(store.AcceptJournal(Source,
-            [new GcJournalUnlock("one", 4, "B", 2, Now)], Now));
-        // A missing journal is the only fallback case. The same achievement
-        // must not be re-awarded by the snapshot path afterward.
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("OLD", 1), ("B", 2)), Now));
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(), Now));
-        Assert.Empty(store.AcceptSnapshot(Source, Snapshot(("OLD", 1), ("B", 2)), Now,
-            recordNewUnlocks: false));
+        using var store = new UnlockEventStore();
+        var oldRows = new[] { Award("s1", 1, "OLD", 1),
+            Award("s1", 2, "OLDER", 2) };
+        Assert.Empty(store.AcceptJournal(Source, oldRows, Now,
+            baselineExisting: true));
+        Assert.Empty(store.GetRecent(Source));
+        var newRows = oldRows.Append(Award("s1", 3, "NEW", 3)).ToArray();
+        Assert.Equal("NEW",
+            Assert.Single(store.AcceptJournal(Source, newRows, Now)).AchievementId);
+        Assert.Empty(store.AcceptJournal(Source, newRows, Now));
         Assert.Single(store.GetRecent(Source));
+        // In the same RASC session, a new GC match may truncate the journal,
+        // but the writer's sequence stays monotonic and old records never replay.
+        Assert.Equal("SECOND_MATCH",
+            Assert.Single(store.AcceptJournal(Source,
+                [Award("s1", 4, "SECOND_MATCH", 4)], Now)).AchievementId);
+        Assert.Equal(2, store.GetRecent(Source).Count);
     }
 
     [Fact]
-    public void JournalOnlyEventsDoNotPretendToProvideACompleteAchievementState()
+    public void JournalIdentityIsSourceSessionSequenceNotUnlockTimestamp()
     {
-        using var store = new UnlockEventStore(NewDatabase());
-        Assert.Empty(store.AcceptJournal(Source, Array.Empty<GcJournalUnlock>(), Now));
-        Assert.False(store.GetCurrentState(Source).HasValidSnapshot);
-        var journal = new GcJournalUnlock("live", 1, "LIVE_ONLY", 12, Now);
-        Assert.Single(store.AcceptJournal(Source, [journal], Now));
-        Assert.False(store.GetCurrentState(Source).HasValidSnapshot);
-        Assert.Single(store.GetRecent(Source));
+        using var store = new UnlockEventStore();
+        var a = Assert.Single(store.AcceptJournal(Source,
+            [Award("process-one", 7, "A", 30)], Now));
+        Assert.Empty(store.AcceptJournal(Source,
+            [Award("process-one", 7, "B", 30)], Now));
+        var b = Assert.Single(store.AcceptJournal(Source,
+            [Award("process-two", 1, "A", 30)], Now));
+        Assert.NotEqual(a.EventId, b.EventId);
+        Assert.Equal(2, store.GetRecent(Source).Count);
+    }
 
-        // A delayed first complete snapshot is still a silent baseline,
-        // and the journal entry remains in durable history without replay.
+    [Fact]
+    public void EarnedStateIsKnownOnlyAfterValidatedSnapshot()
+    {
+        using var store = new UnlockEventStore();
+        store.AcceptJournal(Source, [Award("live", 1, "LIVE", 1)], Now);
+        Assert.False(store.GetCurrentState(Source).HasValidSnapshot);
         Assert.Empty(store.AcceptSnapshot(Source,
-            Snapshot(("LIVE_ONLY", 12), ("PREVIOUS", 4)), Now));
-        Assert.True(store.GetCurrentState(Source).HasValidSnapshot);
-        Assert.Equal(2, store.GetCurrentState(Source).Achievements.Count);
-        Assert.Empty(store.AcceptJournal(Source, [journal], Now));
-        Assert.Single(store.GetRecent(Source));
+            Snapshot(("SAVED", 12)), Now, recordNewUnlocks: false));
+        var next = Assert.Single(store.AcceptJournal(Source,
+            [Award("live", 2, "NEW", 22)], Now));
+        Assert.Equal("NEW", next.AchievementId);
+        var state = store.GetCurrentState(Source);
+        Assert.True(state.HasValidSnapshot);
+        Assert.Equal(2, state.Achievements.Count);
+        Assert.Contains("SAVED", state.Achievements.Keys);
+        Assert.Contains("NEW", state.Achievements.Keys);
     }
 
+    [Fact]
+    public void BadJournalDoesNotCreateSyntheticAwardFromSnapshotBaseline()
+    {
+        using var store = new UnlockEventStore();
+        Assert.Empty(store.AcceptSnapshot(Source,
+            Snapshot(("A", 1)), Now, recordNewUnlocks: false));
+        Assert.Empty(store.AcceptSnapshot(Source,
+            Snapshot(("A", 1), ("B", 2)), Now, recordNewUnlocks: false));
+        Assert.Empty(store.GetRecent(Source));
+        Assert.Equal("B", Assert.Single(store.AcceptJournal(Source,
+            [Award("live", 8, "B", 2)], Now)).AchievementId);
+        Assert.Empty(store.AcceptJournal(Source,
+            [Award("live", 8, "B", 2)], Now));
+    }
+
+    [Fact]
+    public void SourceIsolationAndFallbackTimestampDeduplication()
+    {
+        using var store = new UnlockEventStore();
+        store.AcceptSnapshot("one", Snapshot(), Now);
+        store.AcceptSnapshot("two", Snapshot(), Now);
+        Assert.Single(store.AcceptSnapshot("two", Snapshot(("A", 3)), Now));
+        Assert.Empty(store.GetRecent("one"));
+        store.AcceptSnapshot("two", Snapshot(), Now);
+        Assert.Empty(store.AcceptSnapshot("two", Snapshot(("A", 3)), Now));
+        Assert.Single(store.GetRecent("two"));
+    }
 }

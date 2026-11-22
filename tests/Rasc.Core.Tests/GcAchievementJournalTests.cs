@@ -43,6 +43,7 @@ public sealed class GcAchievementJournalTests
                 Event("s", 3, "stats_store", ",\"success\":true,\"newly_stored\":1"));
             var read = await GcAchievementJournal.ReadAsync(path);
             Assert.Equal(ReadStatus.Valid, read.Status);
+            Assert.Empty(read.MatchStarts); // old compatible journal has no marker
             var award = Assert.Single(read.Unlocks);
             Assert.Equal("A", award.AchievementId);
             Assert.Equal(2UL, award.Sequence);
@@ -73,4 +74,29 @@ public sealed class GcAchievementJournalTests
         }
         finally { File.Delete(path); }
     }
+    [Fact]
+    public async Task ExplicitMatchStartIsNotAnAwardAndCarriesBaselineReason()
+    {
+        var path = Path.Combine(Path.GetTempPath(),
+            "rasc-join-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await File.WriteAllTextAsync(path,
+                Event("s", 1, "match_start", ",\"reason\":\"join\"") +
+                Event("s", 2, "unlock", ",\"id\":\"NEW\",\"unlock_seconds\":33"));
+            var read = await GcAchievementJournal.ReadAsync(path);
+            Assert.Equal(ReadStatus.Valid, read.Status);
+            var join = Assert.Single(read.MatchStarts);
+            Assert.Equal("join", join.Reason);
+            Assert.Equal(1UL, join.Sequence);
+            Assert.Equal("NEW", Assert.Single(read.Unlocks).AchievementId);
+
+            await File.WriteAllTextAsync(path,
+                Event("s", 3, "match_start", ",\"reason\":\"reset\""));
+            Assert.Equal("reset", Assert.Single(
+                (await GcAchievementJournal.ReadAsync(path)).MatchStarts).Reason);
+        }
+        finally { File.Delete(path); }
+    }
+
 }
