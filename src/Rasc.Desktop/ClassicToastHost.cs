@@ -19,6 +19,10 @@ internal sealed class ClassicToastHost : IDisposable
     private readonly ClassicToastScheduler _schedule = new();
     private readonly Dictionary<string, ClassicToastCard> _cards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Content> _text = new(StringComparer.Ordinal);
+    // Never print event IDs or achievement names: stages and geometry are
+    // sufficient to diagnose stuck Classic slide/window behavior.
+    private readonly Dictionary<string, ClassicToastStage> _loggedStage = new(StringComparer.Ordinal);
+    private bool _loggedRenderStall;
     private readonly DispatcherTimer _holdWake;
     private readonly DispatcherTimer _anchorWake;
     // CompositionTarget.Rendering can stop while a fullscreen game owns the
@@ -74,6 +78,7 @@ internal sealed class ClassicToastHost : IDisposable
             return;
         _fpsCap = valid.AnimationFps;
         _popupSizePercent = valid.PopupSizePercent;
+        AppLog.Info("classic.settings", $"fps={_fpsCap}; sizePercent={_popupSizePercent}");
         _frameGate.Reset();
         _window?.SetPopupSizePercent(_popupSizePercent);
         Tick(); // Immediately relayout any visible stack, no new unlock is generated.
@@ -102,6 +107,7 @@ internal sealed class ClassicToastHost : IDisposable
         // make a newly received achievement appear to have arrived earlier.
         Tick();
         if (!_schedule.Enqueue(evt)) return;
+        AppLog.Info("classic.queue", $"accepted; waiting={_schedule.WaitingCount}; active={_schedule.ActiveCount}");
         _text[evt.EventId] = new Content(title, description, jpeg);
         Tick();
     }
@@ -143,6 +149,11 @@ internal sealed class ClassicToastHost : IDisposable
                 gap.TotalMilliseconds);
         }
         _previousCallbackAt = at;
+        if (_loggedRenderStall)
+        {
+            AppLog.Info("classic.render", "composition callbacks resumed");
+            _loggedRenderStall = false;
+        }
         _renderCallbacks++;
         if (!_frameGate.ShouldApply(at, _fpsCap)) return;
         if (_lastAppliedAt is { } previous && at > previous)
@@ -177,6 +188,13 @@ internal sealed class ClassicToastHost : IDisposable
         // does not impose an additional 60Hz ceiling on healthy renderers.
         if (_previousCallbackAt is { } recent &&
             at - recent < TimeSpan.FromMilliseconds(40)) return;
+        if (!_loggedRenderStall)
+        {
+            AppLog.Warning("classic.render", $"composition stalled; " +
+                $"lastCallbackMs={(_previousCallbackAt is { } last ? (at-last).TotalMilliseconds.ToString("F0", CultureInfo.InvariantCulture) : "never")}; " +
+                $"animationSegments={_animationSegments}");
+            _loggedRenderStall = true;
+        }
         if (!_frameGate.ShouldApply(at, _fpsCap)) return;
         _appliedAnimationUpdates++;
         Tick();
@@ -197,6 +215,7 @@ internal sealed class ClassicToastHost : IDisposable
         _lastAppliedAt = null;
         _frameGate.Reset();
         _animationSegments++;
+        AppLog.Info("classic.render", $"animation segment started; n={_animationSegments}");
         CompositionTarget.Rendering += OnRendering;
         _renderSubscribed = true;
         _animationFallback.Start();
@@ -208,6 +227,7 @@ internal sealed class ClassicToastHost : IDisposable
         if (!_renderSubscribed) return;
         CompositionTarget.Rendering -= OnRendering;
         _renderSubscribed = false;
+        AppLog.Info("classic.render", "animation segment ended");
         _previousRenderTime = null;
         _previousCallbackAt = null;
         _lastAppliedAt = null;
@@ -234,6 +254,8 @@ internal sealed class ClassicToastHost : IDisposable
             StringComparer.Ordinal);
         foreach (var id in _cards.Keys.Where(id => !visible.Contains(id)).ToArray())
         {
+            AppLog.Info("classic.card", "retired");
+            _loggedStage.Remove(id);
             _window?.Remove(_cards[id]);
             _cards.Remove(id);
             _text.Remove(id);
@@ -244,6 +266,7 @@ internal sealed class ClassicToastHost : IDisposable
             if (_window is not null)
             {
                 _window.DisplayMetricsChanged -= OnDisplayMetricsChanged;
+                AppLog.Info("classic.window", "closed; stack empty");
                 _window.Close();
                 _window = null;
                 _anchorWake.Stop();
@@ -254,6 +277,7 @@ internal sealed class ClassicToastHost : IDisposable
             if (_window is null)
             {
                 _window = new ClassicToastStackWindow();
+                AppLog.Info("classic.window", "create; popup stack 240x282 design units");
                 _window.SetPopupSizePercent(_popupSizePercent);
                 _window.DisplayMetricsChanged += OnDisplayMetricsChanged;
                 _window.Show();
@@ -261,6 +285,14 @@ internal sealed class ClassicToastHost : IDisposable
             }
             foreach (var frame in frames)
             {
+                if (!_loggedStage.TryGetValue(frame.Event.EventId, out var previousStage)
+                    || previousStage != frame.Stage)
+                {
+                    _loggedStage[frame.Event.EventId] = frame.Stage;
+                    AppLog.Info("classic.card",
+                        $"stage={frame.Stage}; slot={frame.Slot}; " +
+                        $"y={frame.Y:F1}; clipTop={frame.ClipTop:F1}; clipBottom={frame.ClipBottom:F1}");
+                }
                 if (!_cards.TryGetValue(frame.Event.EventId, out var card))
                 {
                     var content = _text[frame.Event.EventId];
@@ -347,7 +379,10 @@ internal sealed class ClassicToastHost : IDisposable
             _window.Close();
             _window = null;
         }
+        AppLog.Info("classic", $"dispose; callbacks={_renderCallbacks}; " +
+            $"appliedUpdates={_appliedAnimationUpdates}; remainingCards={_cards.Count}");
         _cards.Clear();
+        _loggedStage.Clear();
         _text.Clear();
         WriteRenderDiagnostics();
     }

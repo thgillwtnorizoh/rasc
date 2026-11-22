@@ -776,6 +776,27 @@ internal static class Program
                             if (classicCount() == 0) { Fail("Classic never appeared."); return; }
                             classicObserved = true;
                             if (modernCount() != 0) { Fail("Unexpected Modern HWND."); return; }
+                            if (scenario == "classic-only")
+                            {
+                                // Verify the REAL WPF toast emitted useful
+                                // diagnostic events, not just a logger unit test.
+                                var logFile = AppLog.CurrentFile;
+                                if (logFile is null || !File.Exists(logFile))
+                                {
+                                    Fail("Session diagnostics were not created."); return;
+                                }
+                                using var liveLog = new FileStream(logFile,
+                                    FileMode.Open, FileAccess.Read,
+                                    FileShare.ReadWrite | FileShare.Delete);
+                                using var reader = new StreamReader(liveLog);
+                                var trace = reader.ReadToEnd();
+                                if (!trace.Contains("[classic.queue] accepted;", StringComparison.Ordinal) ||
+                                    !trace.Contains("[classic.card] stage=Visible;", StringComparison.Ordinal) ||
+                                    !trace.Contains("[classic.window] create;", StringComparison.Ordinal))
+                                {
+                                    Fail("Classic stage, queue or HWND diagnostics missing."); return;
+                                }
+                            }
                             stage++;
                         }
                         else if (stage == 2 && elapsed > 8050)
