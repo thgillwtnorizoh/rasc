@@ -2,7 +2,10 @@
 
 Project / Campaign / Actor / Assignment: CS:GO Achievements Resurrection / P006-C08 / Work 2 / first-party local diagnostic logging.
 Starting SHA: `9e735e931d0e878f5761fc744efa506b32de41c4` — latest P006-C07 active development branch (not stale default main).
-Status: ENGINEERING IMPLEMENTATION; exact-head build/test results pending publication. This checkpoint is NOT owner acceptance.
+Status: VERIFIED CHECKPOINT (Windows CI); real CS:GO fullscreen runtime and root cause NOT VERIFIED. Not owner-accepted.
+Exact tested production SHA: `900fc6ce7236bc754fd8ff290165c8de8f04d895`.
+Published merge SHA: `81fb3c57a052bcfd5b48718f2aea674ac23a12e2`.
+Identical tested/merged source tree SHA: `fc7bdb876becf4bedcfa7904f19130370067dc26`.
 
 ## Owner evidence
 November 22 owner clarified original runtime symptoms: Classic toast freezes halfway through slide, achievement sound still plays, then RASC process exits/crashes. A previously proposed render-starvation watchdog passed simulated GUI tests but **did not establish the true root cause**; the actual WPF/Win32 exception or native termination is unknown. No stack trace, temporal log or dump from the failing legacy game was provided. Classify as OWNER-OBSERVED runtime report / DISCREPANCY, not CONFIRMED native mechanism.
@@ -16,11 +19,11 @@ November 22 owner clarified original runtime symptoms: Classic toast freezes hal
 - Side effects: logging can slightly increase disk IO on stage transitions/queue dispatch; logs are best effort. Exception strings may reveal local paths and require owner review before sharing. No per-frame logging.
 
 ## Verification plan
-Use existing Windows Actions workflow to build, run all core xUnit tests, all WPF GUI smoke scenarios and self-contained x64 packaging; assert exact SHA and preserve historical suites. No native fullscreen CS:GO or Windows Event Viewer crash reproduction yet, so error cause remains **UNVERIFIED RUNTIME**.
+[Windows Actions 45031676859](https://github.com/thgillwtnorizoh/rasc/actions/runs/45031676859) **SUCCESS** on exact production SHA: **264/264 core xUnit tests, 0 failed, 0 skipped**; native WPF app compile; real-WPF Classic-only and suppressed-render Classic smoke; real UI smoke assertions for emitted diagnostic log entries; all existing Modern, rare glow, P006 achievement-library, burst and wave tests passed; self-contained Windows x64 package/artifacts uploaded. Three preceding feature runs (45031308318, 45031421419, 45031547339) failed while resolving Windows file-sharing test semantics and a new AppLog namespace import; failures preserved as engineering evidence. Original fullscreen CS:GO crash and Windows Event Viewer correlation were **NOT RUN** and remain **UNVERIFIED RUNTIME**.
 After owner reproduces: preserve newest rasc log, `last-unhandled-error.txt`, `last-shutdown.txt`, `last-classic-animation.txt`, approximate wall time + fullscreen mode. Distinguish managed exception logs from abruptly truncated logs (native kill/crash, access violation, power or process termination).
 Acceptance: owner qualifies actual CS:GO Classic crash and approves contents/privacy/retention. Do not assert an unproven renderer fix.
 
 Coverage gained: persistent pre-crash timing/state and centralized managed exception information for next investigation.
 Remaining: application shutdown without managed events, actual native crash reason, independent QA, production screenshot comparison.
-Next bounded task / actor: Work 2 verify latest CI; owner reproduce and supply sanitized diagnostics; Work 1 independent explanation.
+Next bounded task / actor: Owner reproduce Classic halfway-popup → sound → crash with build containing P006-C08; preserve newest session log and optional last-unhandled error; Work 1 independently analyze actual exception/foreground HWND sequence and propose bounded fix.
 Subsystem: OPEN.
