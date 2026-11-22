@@ -115,6 +115,22 @@ public sealed class InstallationDiscoveryTests
     }
 
     [Fact]
+    public void JournalOnlyInstallationIsReadyAndResolvesGameRoot()
+    {
+        using var t = new Sandbox();
+        var root = t.NewGame("journal-only", file: false);
+        var path = Path.Combine(root, "csgo_gc", "achievement_log");
+        File.WriteAllText(path, string.Empty);
+        var ready = InstallationDiscovery.ExamineGc(root);
+        Assert.Equal(GcInstallState.Ready, ready.State);
+        Assert.Equal(Path.Combine(root, "csgo_gc", "achievements.txt"), ready.AchievementsPath);
+        Assert.Equal(root, InstallationDiscovery.GameRootFromAchievementsPath(path));
+        var source = new GcFileSource(path);
+        Assert.Equal(ready.AchievementsPath, source.FilePath);
+        Assert.Equal(path, source.JournalPath);
+    }
+
+    [Fact]
     public void ManualInstallationPreferencesPersistWithNoHistoryModification()
     {
         using var t = new Sandbox();

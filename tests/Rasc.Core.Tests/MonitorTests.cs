@@ -192,4 +192,83 @@ public sealed class MonitorTests
             $"Monitor disposal took {stopwatch.Elapsed} rather than canceling its waiting poll.");
     }
 
+    [Fact]
+    public async Task PrefersLiveJournalAndFallsBackOnlyWhenFileDisappears()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-journal-monitor-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
+        await File.WriteAllTextAsync(source.FilePath, Snapshot(("ALREADY", 1)));
+        await File.WriteAllTextAsync(source.JournalPath, "");
+        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(40));
+
+        var ready = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var unlocked = new TaskCompletionSource<UnlockEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int awards = 0;
+        monitor.StatusChanged += (_, status) =>
+        {
+            if (status.StartsWith("Monitoring achievement_log", StringComparison.Ordinal))
+                ready.TrySetResult(true);
+        };
+        monitor.UnlockDetected += (_, award) =>
+        {
+            Interlocked.Increment(ref awards);
+            unlocked.TrySetResult(award);
+        };
+        await monitor.StartAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(store.GetRecent(source.SourceKey)); // empty log is not snapshot fallback
+
+        await File.AppendAllTextAsync(source.JournalPath,
+            "{\"v\":1,\"session\":\"match1\",\"seq\":1,\"time_ms\":1795260000125," +
+            "\"steady_us\":55,\"type\":\"unlock\",\"id\":\"LIVE\"," +
+            "\"unlock_seconds\":1795260000}\n");
+        Assert.Equal("LIVE",
+            (await unlocked.Task.WaitAsync(TimeSpan.FromSeconds(10))).AchievementId);
+        await Task.Delay(160);
+        Assert.Equal(1, Volatile.Read(ref awards));
+
+        // A fallback snapshot that already contains the live unlock must not
+        // generate a second synthetic reward.
+        await File.WriteAllTextAsync(source.FilePath,
+            Snapshot(("ALREADY", 1), ("LIVE", 1795260000)));
+        await File.WriteAllTextAsync(source.JournalPath, ""); // match ended
+        await Task.Delay(160);
+        Assert.Equal(1, Volatile.Read(ref awards));
+        File.Delete(source.JournalPath); // legacy GC fallback
+        await Task.Delay(160);
+        Assert.Equal(1, Volatile.Read(ref awards));
+        Assert.Single(store.GetRecent(source.SourceKey));
+    }
+
+    [Fact]
+    public async Task MalformedJournalNeverSilentlyFallsBackToSnapshotAwards()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-malformed-journal-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
+        await File.WriteAllTextAsync(source.FilePath, Snapshot(("A", 1)));
+        await File.WriteAllTextAsync(source.JournalPath, "not-json\n");
+        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        await using var monitor = new AchievementMonitor(
+            source, store, TimeSpan.FromMilliseconds(45));
+        var errored = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.StatusChanged += (_, message) =>
+        {
+            if (message.StartsWith("Journal Invalid:", StringComparison.Ordinal))
+                errored.TrySetResult(true);
+        };
+        await monitor.StartAsync();
+        await errored.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(store.GetRecent(source.SourceKey));
+        Assert.False(store.GetCurrentState(source.SourceKey).HasValidSnapshot);
+    }
+
 }

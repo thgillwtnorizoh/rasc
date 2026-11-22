@@ -26,7 +26,7 @@
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <StackPanel Grid.Column="0">
-          <TextBlock Margin="0,0,0,5" Text="GT-610 achievements.txt path" FontWeight="SemiBold"/>
+          <TextBlock Margin="0,0,0,5" Text="GC achievements source (journal preferred)" FontWeight="SemiBold"/>
           <TextBox x:Name="PathBox" Padding="8,6" MinHeight="32"
                    ToolTip="Automatically found in csgo_gc/ next to csgo.exe. Manual choice requires the same layout."/>
         </StackPanel>
@@ -186,7 +186,7 @@
                  Text="Local achievement names: not checked."/>
       <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="Gray"
                  TextWrapping="Wrap"
-                 Text="Installed Steam sounds are read in-place; no copies or client changes. The GC source is accepted only when csgo.exe and csgo_gc/ share a game directory and achievements.txt exists. Existing awards baseline silently. Typography experiments are parked; owner confirmation of queued-wave audio is still pending."/>
+                 Text="Installed Steam sounds are read in-place; no copies or client changes. The GC source is accepted only when csgo.exe and csgo_gc/ share a game directory and achievement_log or achievements.txt exists. Live journal unlocks take priority; legacy snapshots baseline silently. Typography experiments are parked; owner confirmation of queued-wave audio is still pending."/>
     </StackPanel>
   </Grid>
 </Window>
