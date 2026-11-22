@@ -40,11 +40,13 @@ public sealed class AchievementMonitor : IAsyncDisposable
         {
             _watcher = new FileSystemWatcher(directory)
             {
-                // Wake for both the snapshot and the preferred live journal.
-                Filter = "*",
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                 IncludeSubdirectories = false
             };
+            // Avoid opening the snapshot repeatedly on unrelated temp-file
+            // writes (including the GC writer's atomic replacement staging).
+            _watcher.Filters.Add(Path.GetFileName(_source.FilePath));
+            _watcher.Filters.Add(Path.GetFileName(_source.JournalPath));
             _watcher.Changed += OnChanged;
             _watcher.Created += OnChanged;
             _watcher.Deleted += OnChanged;
