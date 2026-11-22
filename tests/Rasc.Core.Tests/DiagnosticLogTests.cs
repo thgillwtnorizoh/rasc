@@ -19,7 +19,13 @@ public sealed class DiagnosticLogTests
                 logger.Info("classic", "stage=enter count=1");
                 logger.Warning("renderer", "callback stall\nrecovered");
                 logger.Fatal("unhandled.ui", new InvalidOperationException("synthetic test crash"));
-                var lines = File.ReadAllLines(path);
+                // File.ReadAllLines uses FileShare.Read on Windows, which
+                // denies an active writer. A live diagnostics viewer must
+                // request FileShare.ReadWrite to inspect the running log.
+                using var liveFile = new FileStream(path, FileMode.Open,
+                    FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(liveFile);
+                var lines = reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
                 Assert.Contains(lines, l => l.Contains("[INFO] [classic] stage=enter count=1"));
                 Assert.Contains(lines, l => l.Contains("[WARN] [renderer] callback stall\\nrecovered"));
                 Assert.Contains(lines, l => l.Contains("[FATAL] [unhandled.ui]") &&
