@@ -53,7 +53,25 @@ public sealed class MonitorTests
         var changed = Snapshot(("A", 1), ("B", 2));
         var temp = path + ".tmp";
         await File.WriteAllTextAsync(temp, changed);
-        File.Move(temp, path, overwrite: true);
+        // The Windows scanner may briefly hold either file during a source
+        // replacement. Retry within a bounded 500 ms window; a lasting
+        // sharing violation still fails this original atomic-replace test.
+        Exception? replacementFailure = null;
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            try
+            {
+                File.Move(temp, path, overwrite: true);
+                replacementFailure = null;
+                break;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                replacementFailure = ex;
+                await Task.Delay(25);
+            }
+        }
+        Assert.Null(replacementFailure);
         var evt = await unlocked.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal("B", evt.AchievementId);
         Assert.Equal(changed, await File.ReadAllTextAsync(path));
