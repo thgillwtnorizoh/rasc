@@ -8,13 +8,19 @@ public sealed record GcJournalUnlock(
     string Session, ulong Sequence, string AchievementId,
     uint UnlockUnixSeconds, DateTimeOffset ObservedAt);
 
+public sealed record GcJournalMatchStart(
+    string Session, ulong Sequence, DateTimeOffset ObservedAt, string Reason);
+
 public sealed record GcJournalReadResult(
-    ReadStatus Status, IReadOnlyList<GcJournalUnlock> Unlocks, string? Detail)
+    ReadStatus Status, IReadOnlyList<GcJournalUnlock> Unlocks,
+    IReadOnlyList<GcJournalMatchStart> MatchStarts, string? Detail)
 {
-    public static GcJournalReadResult Valid(IReadOnlyList<GcJournalUnlock> unlocks) =>
-        new(ReadStatus.Valid, unlocks, null);
+    public static GcJournalReadResult Valid(IReadOnlyList<GcJournalUnlock> unlocks,
+        IReadOnlyList<GcJournalMatchStart> starts) =>
+        new(ReadStatus.Valid, unlocks, starts, null);
     public static GcJournalReadResult Failure(ReadStatus status, string detail) =>
-        new(status, Array.Empty<GcJournalUnlock>(), detail);
+        new(status, Array.Empty<GcJournalUnlock>(),
+            Array.Empty<GcJournalMatchStart>(), detail);
 }
 
 public static class GcAchievementJournal
@@ -49,6 +55,7 @@ public static class GcAchievementJournal
             var validLength = lastNewline < 0 ? 0 : lastNewline + 1;
             var content = StrictUtf8.GetString(bytes, 0, validLength);
             var results = new List<GcJournalUnlock>();
+            var starts = new List<GcJournalMatchStart>();
             var identities = new HashSet<(string Session, ulong Sequence)>();
             foreach (var line in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
@@ -65,6 +72,16 @@ public static class GcAchievementJournal
                     sequence == 0 || string.IsNullOrWhiteSpace(type) ||
                     !identities.Add((session, sequence)))
                     throw new FormatException("Invalid or duplicate journal event identity.");
+                if (type == "match_start")
+                {
+                    var reason = root.TryGetProperty("reason", out var value)
+                        ? value.GetString() : "join";
+                    if (reason is not ("join" or "reset"))
+                        throw new FormatException("Unknown match baseline reason.");
+                    starts.Add(new GcJournalMatchStart(session, sequence,
+                        DateTimeOffset.FromUnixTimeMilliseconds(ms), reason));
+                    continue;
+                }
                 if (type != "unlock") continue;
                 var id = root.GetProperty("id").GetString();
                 var seconds = root.GetProperty("unlock_seconds").GetUInt32();
@@ -73,7 +90,7 @@ public static class GcAchievementJournal
                 results.Add(new GcJournalUnlock(session, sequence, id,
                     seconds, DateTimeOffset.FromUnixTimeMilliseconds(ms)));
             }
-            return GcJournalReadResult.Valid(results);
+            return GcJournalReadResult.Valid(results, starts);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (FileNotFoundException)

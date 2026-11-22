@@ -135,10 +135,11 @@ public partial class MainWindow : Window
             if (!CheckGcPathBeforeMonitoring()) return;
             var source = new GcFileSource(PathBox.Text);
             LoadLiveAchievementMetadata(source.FilePath);
-            _store ??= new UnlockEventStore(Path.Combine(_localDirectory, "history.db"));
+            // A monitoring run is a NEW observation session. Never replay
+            // historical notifications or pending SQLite rows on start.
+            _store?.Dispose();
+            _store = new UnlockEventStore();
             _history.Clear();
-            foreach (var item in _store.GetRecent(source.SourceKey))
-                _history.Add(new UnlockRow(item.AchievementId, item.ObservedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")));
 
             Directory.CreateDirectory(_localDirectory);
             File.WriteAllText(Path.Combine(_localDirectory, "last-source.txt"), source.FilePath);
@@ -187,7 +188,7 @@ public partial class MainWindow : Window
             StartButton.IsEnabled = false;
             PathBox.IsEnabled = false;
             StopButton.IsEnabled = true;
-            StatusText.Text = "Reading source; first-time history will be baselined.";
+            StatusText.Text = "Observing live GC; existing unlocks are silent.";
             StatusText.ToolTip = _liveMetadataStatus;
         }
         catch (Exception ex)

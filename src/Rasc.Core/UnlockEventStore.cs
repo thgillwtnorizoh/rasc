@@ -1,267 +1,161 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Data.Sqlite;
 
 namespace Rasc.Core;
 
 /// <summary>
-/// App-owned SQLite checkpoint and event ledger. First snapshot establishes a non-notifying
-/// baseline. Every accepted snapshot update and derived unlock is a single transaction.
+/// Process-local, read-only source observation. There is no SQLite database,
+/// no recovered pending queue, and no disk-backed achievement history.
+/// Each monitoring start owns a fresh instance; existing sources form a silent
+/// baseline, so old awards never get re-queued by a subsequent application run.
 /// </summary>
 public sealed class UnlockEventStore : IDisposable
 {
-    private readonly SqliteConnection _connection;
     private readonly object _sync = new();
+    private readonly Dictionary<string, Dictionary<string, uint>> _snapshots =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, ulong>> _journalHighWater =
+        new(StringComparer.Ordinal);
+    private readonly List<UnlockEvent> _history = [];
+    private readonly Dictionary<string, UnlockEvent> _pending = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _observedFallbackAwards = new(StringComparer.Ordinal);
+    private const int HistoryLimit = 300;
 
-    public UnlockEventStore(string databasePath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
-        var full = Path.GetFullPath(databasePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        _connection = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = full, Mode = SqliteOpenMode.ReadWriteCreate
-        }.ToString());
-        _connection.Open();
-        using var pragmas = _connection.CreateCommand();
-        pragmas.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;";
-        pragmas.ExecuteNonQuery();
-        using var schema = _connection.CreateCommand();
-        schema.CommandText = """
-            CREATE TABLE IF NOT EXISTS sources (
-              source_key TEXT PRIMARY KEY,
-              first_seen_ms INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS achievement_state (
-              source_key TEXT NOT NULL,
-              achievement_id TEXT NOT NULL,
-              unlock_seconds INTEGER NOT NULL,
-              PRIMARY KEY(source_key, achievement_id),
-              FOREIGN KEY(source_key) REFERENCES sources(source_key)
-            );
-            CREATE TABLE IF NOT EXISTS unlock_history (
-              event_id TEXT PRIMARY KEY,
-              source_key TEXT NOT NULL,
-              achievement_id TEXT NOT NULL,
-              unlock_seconds INTEGER NOT NULL,
-              observed_ms INTEGER NOT NULL,
-              delivered_ms INTEGER NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_unlock_pending
-              ON unlock_history(source_key, delivered_ms, observed_ms);
-            """;
-        schema.ExecuteNonQuery();
-    }
-
-    public IReadOnlyList<UnlockEvent> AcceptSnapshot(string sourceKey, GcSnapshot snapshot,
-        DateTimeOffset now, bool recordNewUnlocks = true)
+    /// <summary>Returns only new, observed deltas after a valid source baseline.</summary>
+    public IReadOnlyList<UnlockEvent> AcceptSnapshot(
+        string sourceKey, GcSnapshot snapshot, DateTimeOffset now,
+        bool recordNewUnlocks = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
         ArgumentNullException.ThrowIfNull(snapshot);
         lock (_sync)
         {
-            using var tx = _connection.BeginTransaction();
-            bool baseline;
-            using (var lookup = Query(tx,
-                "SELECT COUNT(*) FROM sources WHERE source_key=$src", ("$src", sourceKey)))
-                baseline = Convert.ToInt32(lookup.ExecuteScalar(), CultureInfo.InvariantCulture) == 0;
-            if (baseline)
+            bool wasKnown = _snapshots.TryGetValue(sourceKey, out var before);
+            var awards = new List<UnlockEvent>();
+            if (wasKnown && recordNewUnlocks)
             {
-                using var insertSource = Query(tx,
-                    "INSERT INTO sources(source_key,first_seen_ms) VALUES($src,$now)",
-                    ("$src", sourceKey), ("$now", now.ToUnixTimeMilliseconds()));
-                insertSource.ExecuteNonQuery();
+                foreach (var (id, stamp) in snapshot.Achievements
+                    .OrderBy(x => x.Value == 0 ? 1 : 0)
+                    .ThenBy(x => x.Value == 0 ? 0u : x.Value)
+                    .ThenBy(x => x.Key, StringComparer.Ordinal))
+                {
+                    if (before!.ContainsKey(id)) continue;
+                    var eid = EventId(sourceKey, id, stamp);
+                    // A reset and immediate re-write of the same timestamp is
+                    // not proof of a fresh grant; do not announce it twice.
+                    if (!_observedFallbackAwards.Add(eid)) continue;
+                    var item = new UnlockEvent(eid, sourceKey, id, stamp, now);
+                    Add(item);
+                    awards.Add(item);
+                }
             }
-
-            var prior = new Dictionary<string, uint>(StringComparer.Ordinal);
-            using (var query = Query(tx,
-                "SELECT achievement_id,unlock_seconds FROM achievement_state WHERE source_key=$src",
-                ("$src", sourceKey)))
-            using (var reader = query.ExecuteReader())
-                while (reader.Read()) prior.Add(reader.GetString(0), checked((uint)reader.GetInt64(1)));
-
-            using (var clear = Query(tx, "DELETE FROM achievement_state WHERE source_key=$src", ("$src", sourceKey)))
-                clear.ExecuteNonQuery();
-
-            var discovered = new List<UnlockEvent>();
-            foreach (var (id, stamp) in snapshot.Achievements
-                .OrderBy(x => x.Value == 0 ? 1 : 0)
-                .ThenBy(x => x.Value == 0 ? 0u : x.Value)
-                .ThenBy(x => x.Key, StringComparer.Ordinal))
-            {
-                using (var update = Query(tx,
-                    "INSERT INTO achievement_state(source_key,achievement_id,unlock_seconds) VALUES($src,$id,$stamp)",
-                    ("$src", sourceKey), ("$id", id), ("$stamp", (long)stamp)))
-                    update.ExecuteNonQuery();
-                if (baseline || !recordNewUnlocks || prior.ContainsKey(id)) continue;
-                var eventId = EventId(sourceKey, id, stamp);
-                using var insert = Query(tx, """
-                    INSERT OR IGNORE INTO unlock_history
-                    (event_id,source_key,achievement_id,unlock_seconds,observed_ms,delivered_ms)
-                    VALUES($event,$src,$id,$stamp,$now,NULL)
-                    """, ("$event", eventId), ("$src", sourceKey), ("$id", id),
-                    ("$stamp", (long)stamp), ("$now", now.ToUnixTimeMilliseconds()));
-                if (insert.ExecuteNonQuery() == 1)
-                    discovered.Add(new UnlockEvent(eventId, sourceKey, id, stamp, now));
-            }
-            tx.Commit();
-            return discovered;
+            _snapshots[sourceKey] = snapshot.Achievements.ToDictionary(x => x.Key, x => x.Value,
+                StringComparer.Ordinal);
+            return awards;
         }
     }
 
     /// <summary>
-    /// Commits real unlock events from the active GC journal. Their identity is
-    /// (source, process session, sequence), not the snapshot's second-precision
-    /// unlock timestamp. Re-reading or restarting never creates duplicates.
+    /// Journal writes are authoritative only for observed new unlocks.
+    /// baselineExisting=true is mandatory when RASC first attaches to an
+    /// existing log: everything already in the file is silently acknowledged.
+    /// Sequence high-water marks survive each match's file truncation while
+    /// RASC stays running, but are never persisted across app restarts.
     /// </summary>
-    public IReadOnlyList<UnlockEvent> AcceptJournal(string sourceKey,
-        IReadOnlyList<GcJournalUnlock> events, DateTimeOffset now)
+    public IReadOnlyList<UnlockEvent> AcceptJournal(
+        string sourceKey, IReadOnlyList<GcJournalUnlock> unlocks,
+        DateTimeOffset now, bool baselineExisting = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
-        ArgumentNullException.ThrowIfNull(events);
-        if (events.Count == 0) return Array.Empty<UnlockEvent>();
+        ArgumentNullException.ThrowIfNull(unlocks);
         lock (_sync)
         {
-            using var tx = _connection.BeginTransaction();
-            // Journal records prove individual unlocks, NOT a complete snapshot.
-            // Do not mark the whole catalog as known/locked by creating a
-            // 'sources' row until achievements.txt has been validated.
-            bool hasSnapshot;
-            using (var lookup = Query(tx,
-                "SELECT 1 FROM sources WHERE source_key=$src LIMIT 1",
-                ("$src", sourceKey)))
-                hasSnapshot = lookup.ExecuteScalar() is not null;
-            var discovered = new List<UnlockEvent>();
-            foreach (var item in events)
+            if (!_journalHighWater.TryGetValue(sourceKey, out var bySession))
             {
-                var eventId = JournalEventId(sourceKey, item.Session, item.Sequence);
-                using var insert = Query(tx, """
-                    INSERT OR IGNORE INTO unlock_history
-                    (event_id,source_key,achievement_id,unlock_seconds,observed_ms,delivered_ms)
-                    VALUES($event,$src,$id,$stamp,$now,NULL)
-                    """, ("$event", eventId), ("$src", sourceKey),
-                    ("$id", item.AchievementId), ("$stamp", (long)item.UnlockUnixSeconds),
-                    ("$now", item.ObservedAt.ToUnixTimeMilliseconds()));
-                var isNew = insert.ExecuteNonQuery() == 1;
-                // An unsaved live unlock can precede achievements.txt. Reapply
-                // the journal's active awards on EVERY read, even when event
-                // identity is already stored, until the log is truncated.
-                if (hasSnapshot)
-                {
-                    using var state = Query(tx, """
-                        INSERT INTO achievement_state(source_key,achievement_id,unlock_seconds)
-                        VALUES($src,$id,$stamp)
-                        ON CONFLICT(source_key,achievement_id) DO UPDATE SET
-                          unlock_seconds=excluded.unlock_seconds
-                        """, ("$src", sourceKey), ("$id", item.AchievementId),
-                        ("$stamp", (long)item.UnlockUnixSeconds));
-                    state.ExecuteNonQuery();
-                }
-                if (isNew) discovered.Add(new UnlockEvent(eventId, sourceKey,
-                    item.AchievementId, item.UnlockUnixSeconds, item.ObservedAt));
+                bySession = new Dictionary<string, ulong>(StringComparer.Ordinal);
+                _journalHighWater.Add(sourceKey, bySession);
             }
-            tx.Commit();
-            return discovered;
+            var added = new List<UnlockEvent>();
+            foreach (var award in unlocks)
+            {
+                var highest = bySession.GetValueOrDefault(award.Session);
+                if (award.Sequence <= highest) continue;
+                bySession[award.Session] = award.Sequence;
+                if (baselineExisting) continue;
+                var id = JournalEventId(sourceKey, award.Session, award.Sequence);
+                var evt = new UnlockEvent(id, sourceKey, award.AchievementId,
+                    award.UnlockUnixSeconds, award.ObservedAt);
+                if (_snapshots.TryGetValue(sourceKey, out var state))
+                    state[award.AchievementId] = award.UnlockUnixSeconds;
+                Add(evt);
+                added.Add(evt);
+            }
+            return added;
         }
     }
 
-    public static string JournalEventId(string sourceKey, string session, ulong seq) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            sourceKey + "\\0journal\\0" + session + "\\0" +
-            seq.ToString(CultureInfo.InvariantCulture))));
-
-    /// <summary>
-    /// Reconstructs the last successfully committed snapshot for this exact GC source.
-    /// HasValidSnapshot=false means Unknown, NOT zero earned or all locked.
-    /// The record is historical/last-known until the monitor confirms a live valid read.
-    /// Neither this query nor a missing/invalid source file changes the SQLite ledger.
-    /// </summary>
     public GcCurrentAchievementState GetCurrentState(string sourceKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
         lock (_sync)
         {
-            using var known = _connection.CreateCommand();
-            known.CommandText = "SELECT 1 FROM sources WHERE source_key=$src LIMIT 1";
-            known.Parameters.AddWithValue("$src", sourceKey);
-            if (known.ExecuteScalar() is null)
+            if (!_snapshots.TryGetValue(sourceKey, out var snapshot))
                 return GcCurrentAchievementState.Unknown;
-
-            using var query = _connection.CreateCommand();
-            query.CommandText = """
-                SELECT achievement_id, unlock_seconds
-                FROM achievement_state WHERE source_key=$src
-                ORDER BY achievement_id
-                """;
-            query.Parameters.AddWithValue("$src", sourceKey);
-            var values = new Dictionary<string, uint>(StringComparer.Ordinal);
-            using var reader = query.ExecuteReader();
-            while (reader.Read())
-                values.Add(reader.GetString(0), checked((uint)reader.GetInt64(1)));
-            return new GcCurrentAchievementState(true, values);
+            return new GcCurrentAchievementState(true,
+                new Dictionary<string, uint>(snapshot, StringComparer.Ordinal));
         }
     }
 
-    public IReadOnlyList<UnlockEvent> GetPending(string sourceKey) =>
-        ReadEvents("WHERE source_key=$src AND delivered_ms IS NULL ORDER BY observed_ms,rowid",
-            sourceKey, 1000);
-
-    public IReadOnlyList<UnlockEvent> GetRecent(string sourceKey, int limit = 100) =>
-        ReadEvents("WHERE source_key=$src ORDER BY observed_ms DESC,rowid DESC",
-            sourceKey, Math.Clamp(limit, 1, 1000));
-
-    private IReadOnlyList<UnlockEvent> ReadEvents(string where, string sourceKey, int limit)
+    public IReadOnlyList<UnlockEvent> GetPending(string sourceKey)
     {
         lock (_sync)
         {
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = $"""
-                SELECT event_id,source_key,achievement_id,unlock_seconds,observed_ms
-                FROM unlock_history {where} LIMIT $limit
-                """;
-            cmd.Parameters.AddWithValue("$src", sourceKey);
-            cmd.Parameters.AddWithValue("$limit", limit);
-            var result = new List<UnlockEvent>();
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-                result.Add(new UnlockEvent(reader.GetString(0), reader.GetString(1),
-                    reader.GetString(2), checked((uint)reader.GetInt64(3)),
-                    DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4))));
-            return result;
+            return _history.Where(x => x.SourceKey == sourceKey &&
+                _pending.ContainsKey(x.EventId)).ToArray();
+        }
+    }
+
+    public IReadOnlyList<UnlockEvent> GetRecent(string sourceKey, int limit = 100)
+    {
+        lock (_sync)
+        {
+            return _history.Where(x => x.SourceKey == sourceKey)
+                .TakeLast(Math.Clamp(limit, 1, 1000)).Reverse().ToArray();
         }
     }
 
     public void MarkDelivered(string eventId, DateTimeOffset when)
     {
-        lock (_sync)
-        {
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = """
-                UPDATE unlock_history SET delivered_ms=$now
-                WHERE event_id=$id AND delivered_ms IS NULL
-                """;
-            cmd.Parameters.AddWithValue("$id", eventId);
-            cmd.Parameters.AddWithValue("$now", when.ToUnixTimeMilliseconds());
-            cmd.ExecuteNonQuery();
-        }
+        lock (_sync) _pending.Remove(eventId);
     }
 
-    private SqliteCommand Query(SqliteTransaction tx, string sql, params (string key, object value)[] values)
+    private void Add(UnlockEvent evt)
     {
-        var cmd = _connection.CreateCommand();
-        cmd.Transaction = tx;
-        cmd.CommandText = sql;
-        foreach (var (key, value) in values) cmd.Parameters.AddWithValue(key, value);
-        return cmd;
+        _history.Add(evt);
+        if (_history.Count > HistoryLimit) _history.RemoveAt(0);
+        _pending[evt.EventId] = evt;
     }
+
+    public static string JournalEventId(string sourceKey, string session, ulong seq) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            sourceKey + "\0journal\0" + session + "\0" +
+            seq.ToString(CultureInfo.InvariantCulture))));
 
     public static string EventId(string sourceKey, string achievementId, uint seconds) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            sourceKey + "\0" + achievementId + "\0" + seconds.ToString(CultureInfo.InvariantCulture))));
+            sourceKey + "\0" + achievementId + "\0" +
+            seconds.ToString(CultureInfo.InvariantCulture))));
 
     public void Dispose()
     {
-        lock (_sync) _connection.Dispose();
+        lock (_sync)
+        {
+            _snapshots.Clear();
+            _journalHighWater.Clear();
+            _observedFallbackAwards.Clear();
+            _history.Clear();
+            _pending.Clear();
+        }
     }
 }

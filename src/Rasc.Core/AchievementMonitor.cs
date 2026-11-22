@@ -1,9 +1,12 @@
 namespace Rasc.Core;
 
 /// <summary>
-/// FileSystemWatcher is a low-latency signal only; a bounded periodic pass recovers missed
-/// changes and atomic replacements. Invalid and missing source reads NEVER mutate persisted state.
-/// Events are replayed until the consumer successfully accepts them (at-least-once dispatch).
+/// Live GC monitor with NO persisted replay database. The first observed
+/// journal or snapshot is a silent baseline. When a journal exists, ONLY new
+/// native unlock records produce popup events. Every GC match_start marker
+/// triggers one achievements.txt baseline refresh for current earned state.
+/// The legacy achievements.txt delta monitor is used only while the journal
+/// is absent (never for malformed/unavailable journal data).
 /// </summary>
 public sealed class AchievementMonitor : IAsyncDisposable
 {
@@ -15,10 +18,12 @@ public sealed class AchievementMonitor : IAsyncDisposable
     private CancellationTokenSource? _cancel;
     private Task? _runner;
     private GcCurrentAchievementState? _lastSignaledState;
-    private bool _snapshotObservedThisRun;
+    private bool _firstPass = true;
+    private bool _fallbackActive;
+    private bool _journalActive;
+    private string? _lastMatchStartIdentity;
 
     public event EventHandler<UnlockEvent>? UnlockDetected;
-    /// <summary>One ordered, source-confirmed reconciliation burst; replaces per-award UI dispatch.</summary>
     public event EventHandler<IReadOnlyList<UnlockEvent>>? UnlockBatchDetected;
     public event EventHandler<GcCurrentAchievementState>? CurrentStateChanged;
     public event EventHandler<string>? StatusChanged;
@@ -27,7 +32,7 @@ public sealed class AchievementMonitor : IAsyncDisposable
     {
         _source = source;
         _store = store;
-        _interval = interval ?? TimeSpan.FromSeconds(1);
+        _interval = interval ?? TimeSpan.FromMilliseconds(250);
         if (_interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
     }
 
@@ -43,9 +48,7 @@ public sealed class AchievementMonitor : IAsyncDisposable
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                 IncludeSubdirectories = false
             };
-            // Avoid opening the snapshot repeatedly on unrelated temp-file
-            // writes (including the GC writer's atomic replacement staging).
-            _watcher.Filters.Clear(); // remove any implicit wildcard filter
+            _watcher.Filters.Clear();
             _watcher.Filters.Add(Path.GetFileName(_source.FilePath));
             _watcher.Filters.Add(Path.GetFileName(_source.JournalPath));
             _watcher.Changed += OnChanged;
@@ -59,21 +62,18 @@ public sealed class AchievementMonitor : IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    private void OnChanged(object sender, FileSystemEventArgs args) => Wake();
-
-    private void OnRenamed(object sender, RenamedEventArgs args) => Wake();
-
-    private void OnWatcherError(object sender, ErrorEventArgs args)
+    private void OnChanged(object sender, FileSystemEventArgs e) => Wake();
+    private void OnRenamed(object sender, RenamedEventArgs e) => Wake();
+    private void OnWatcherError(object sender, ErrorEventArgs e)
     {
         StatusChanged?.Invoke(this, "File watcher error; periodic reconciliation continues.");
         Wake();
     }
-
     private void Wake()
     {
         try { _wake.Release(); }
-        catch (SemaphoreFullException) { /* coalesced: one outstanding wake is sufficient */ }
-        catch (ObjectDisposedException) { /* shutting down */ }
+        catch (SemaphoreFullException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private async Task RunAsync(CancellationToken ct)
@@ -82,56 +82,69 @@ public sealed class AchievementMonitor : IAsyncDisposable
         {
             try
             {
-                // Journal existence takes priority even if the file is empty.
-                // Invalid/unavailable journal reads fail closed, NOT snapshot fallback.
                 var journal = await _source.ReadJournalAsync(ct);
-                var read = await _source.ReadAsync(ct);
-                var usingJournal = journal.Status == ReadStatus.Valid;
-                if (journal.Status is ReadStatus.Invalid or ReadStatus.Unavailable)
+                var now = DateTimeOffset.UtcNow;
+                if (journal.Status == ReadStatus.Valid)
                 {
+                    var latestStart = journal.MatchStarts.LastOrDefault();
+                    var markerIdentity = latestStart is null ? null
+                        : latestStart.Session + ":" + latestStart.Sequence;
+                    var newMatch = markerIdentity is not null &&
+                        !string.Equals(_lastMatchStartIdentity, markerIdentity,
+                            StringComparison.Ordinal);
+                    var initialJournal = !_journalActive && _firstPass;
+                    // Snapshot only at initial attach, at a new match marker,
+                    // or when transitioning from fallback to journal.
+                    if (initialJournal || newMatch || !_journalActive)
+                    {
+                        var snapshot = await _source.ReadAsync(ct);
+                        if (snapshot.Status == ReadStatus.Valid && snapshot.Snapshot is not null)
+                            _store.AcceptSnapshot(_source.SourceKey, snapshot.Snapshot,
+                                now, recordNewUnlocks: false);
+                        else
+                            StatusChanged?.Invoke(this, $"Earned-state baseline {snapshot.Status}: {snapshot.Detail}");
+                    }
+                    // An already-populated journal at application start is
+                    // history, not a batch of fresh toasts. No saved pending
+                    // events can be recovered because there is no database.
+                    _store.AcceptJournal(_source.SourceKey, journal.Unlocks, now,
+                        baselineExisting: initialJournal);
+                    _lastMatchStartIdentity = markerIdentity ?? _lastMatchStartIdentity;
+                    _journalActive = true;
+                    _fallbackActive = false;
+                    _firstPass = false;
+                    PublishStateAndEvents(ct);
+                    StatusChanged?.Invoke(this,
+                        $"Monitoring achievement_log — {journal.Unlocks.Count} recorded unlock(s).");
+                }
+                else if (journal.Status == ReadStatus.Missing)
+                {
+                    var snapshot = await _source.ReadAsync(ct);
+                    if (snapshot.Status == ReadStatus.Valid && snapshot.Snapshot is not null)
+                    {
+                        // On entering fallback, silently establish its own
+                        // earned baseline. Subsequent source deltas are live.
+                        _store.AcceptSnapshot(_source.SourceKey, snapshot.Snapshot,
+                            now, recordNewUnlocks: _fallbackActive);
+                        _fallbackActive = true;
+                        _journalActive = false;
+                        _firstPass = false;
+                        PublishStateAndEvents(ct);
+                        StatusChanged?.Invoke(this,
+                            $"Monitoring achievements.txt fallback — {snapshot.Snapshot.Achievements.Count} unlocked.");
+                    }
+                    else
+                    {
+                        _firstPass = false;
+                        StatusChanged?.Invoke(this, $"{snapshot.Status}: {snapshot.Detail}");
+                    }
+                }
+                else
+                {
+                    // Corrupt/unavailable journal never silently enables the
+                    // snapshot fallback, which would fabricate historical toasts.
                     StatusChanged?.Invoke(this, $"Journal {journal.Status}: {journal.Detail}");
                 }
-                else if (usingJournal || read.Status == ReadStatus.Valid)
-                {
-                    var now = DateTimeOffset.UtcNow;
-                    if (read.Status == ReadStatus.Valid && read.Snapshot is not null)
-                    {
-                        // A journal can arrive before the first snapshot. Baseline
-                        // that later snapshot silently instead of replaying old
-                        // achievements when the journal disappears.
-                        _store.AcceptSnapshot(_source.SourceKey, read.Snapshot, now,
-                            recordNewUnlocks: !usingJournal && _snapshotObservedThisRun);
-                        _snapshotObservedThisRun = true;
-                    }
-                    if (usingJournal)
-                        _store.AcceptJournal(_source.SourceKey, journal.Unlocks, now);
-
-                    // Publish the actual committed state after both sources. Live
-                    // unlocks can precede achievements.txt persistence.
-                    var committed = _store.GetCurrentState(_source.SourceKey);
-                    if (committed.HasValidSnapshot &&
-                        (_lastSignaledState is null || !SameAchievements(_lastSignaledState, committed)))
-                    {
-                        _lastSignaledState = committed;
-                        CurrentStateChanged?.Invoke(this, committed);
-                    }
-                    // Preserve the original single ordered batch and at-least-once
-                    // delivery contract for the UI, regardless of source choice.
-                    var pending = _store.GetPending(_source.SourceKey);
-                    if (!ct.IsCancellationRequested && pending.Count > 0)
-                        UnlockBatchDetected?.Invoke(this, pending);
-                    foreach (var evt in pending)
-                    {
-                        if (ct.IsCancellationRequested) break;
-                        UnlockDetected?.Invoke(this, evt);
-                        _store.MarkDelivered(evt.EventId, DateTimeOffset.UtcNow);
-                    }
-                    StatusChanged?.Invoke(this, usingJournal
-                        ? $"Monitoring achievement_log — {journal.Unlocks.Count} event(s); " +
-                          (read.Status == ReadStatus.Valid ? "GC snapshot available." : "awaiting GC snapshot.")
-                        : $"Monitoring achievements.txt — {read.Snapshot!.Achievements.Count} unlocked.");
-                }
-                else StatusChanged?.Invoke(this, $"{read.Status}: {read.Detail}");
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex)
@@ -141,9 +154,30 @@ public sealed class AchievementMonitor : IAsyncDisposable
             try
             {
                 await _wake.WaitAsync(_interval, ct);
-                while (_wake.Wait(0)) { /* collapse burst */ }
+                while (_wake.Wait(0)) { }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+        }
+    }
+
+    private void PublishStateAndEvents(CancellationToken ct)
+    {
+        var committed = _store.GetCurrentState(_source.SourceKey);
+        if (committed.HasValidSnapshot &&
+            (_lastSignaledState is null || !SameAchievements(_lastSignaledState, committed)))
+        {
+            _lastSignaledState = committed;
+            CurrentStateChanged?.Invoke(this, committed);
+        }
+        // Keep one ordered UI burst; do not alter the working popup scheduler.
+        var pending = _store.GetPending(_source.SourceKey);
+        if (!ct.IsCancellationRequested && pending.Count > 0)
+            UnlockBatchDetected?.Invoke(this, pending);
+        foreach (var evt in pending)
+        {
+            if (ct.IsCancellationRequested) break;
+            UnlockDetected?.Invoke(this, evt);
+            _store.MarkDelivered(evt.EventId, DateTimeOffset.UtcNow);
         }
     }
 
