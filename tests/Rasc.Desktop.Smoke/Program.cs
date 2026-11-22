@@ -531,8 +531,8 @@ internal static class Program
                                 .Select(b => b.Content?.ToString()).ToArray();
                             if (!labels.Any(t => t.Contains("Files missing from the selected Steam installation") &&
                                     t.Contains("steam.exe") && t.Contains(InstallationDiscovery.SteamDesktopWav)) ||
-                                !labels.Any(t => t.Contains("Missing: csgo_gc/achievements.txt") &&
-                                    t.Contains("play a game")) ||
+                                !labels.Any(t => t.Contains("Missing: csgo_gc/achievement_log and csgo_gc/achievements.txt") &&
+                                    t.Contains("join a match")) ||
                                 !actions.Contains("Set Steam location…") ||
                                 !actions.Contains("Set CS:GO location…") ||
                                 !actions.Contains("Open GT-610 downloads"))
@@ -563,6 +563,17 @@ internal static class Program
                                     source.GameRoot != commonGame)
                                 {
                                     Fail("Steam library VDF did not discover the sibling GC/launcher game root.");
+                                    return;
+                                }
+                                // A journal-only GC installation is also ready.
+                                File.Delete(Path.Combine(commonGame, "csgo_gc", "achievements.txt"));
+                                File.WriteAllText(Path.Combine(commonGame, "csgo_gc", "achievement_log"), "");
+                                var journalOnly = InstallationLocator.FindGc(
+                                    new SteamInstallReport(steamRoot, false, []), null, null);
+                                if (journalOnly.State != GcInstallState.Ready ||
+                                    journalOnly.GameRoot != commonGame)
+                                {
+                                    Fail("Journal-only GC was rejected by installation discovery.");
                                     return;
                                 }
                             }
