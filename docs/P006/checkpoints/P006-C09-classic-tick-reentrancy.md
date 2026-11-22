@@ -1,10 +1,10 @@
 # RASC P006-C09 — Classic rendering reentrancy regression and crash correction
 
 Project / Campaign / Actor / Assignment: CS:GO Achievements Resurrection / P006-C09 / Work 2 / Classic six-burst KeyNotFoundException lifetime.
-Status: ENGINEERING IMPLEMENTED; CI and original-game QA NOT YET RUN at publication.
+Status: VERIFIED CHECKPOINT (Windows core/real-WPF development), original CS:GO post-fix runtime NOT VERIFIED; owner acceptance pending.
 
 Starting SHA: `62479a95d3a37a78b5554fab9dd9c3a57ed98cdb` (active P006 development, not stale default main).
-Published SHA / exact tested SHA: see PR development head and CI run; **NOT VERIFIED at checkpoint creation**.
+Exact tested SHA: `db06fbd53a43e8798f33bc3bf17741270cebfae2`. Published merge SHA: `b10f91bc5e55d3f125180cfcb24ef917b000d905`. Both have the **same** source-tree SHA `1118d89203042b42f586fd2a5062ed43bb13a6e5`.
 
 ## Owner evidence (CONFIRMED APP RUNTIME)
 Owner uploaded `rasc-20261122T154755609-26292-00.log` and `last-unhandled-error.txt` from local CS:GO fullscreen test. The session started 2026-11-22 15:47:55 UTC. At 15:48:58.591 the monitor accepted six new unlocks; the Classic host created a card, repeatedly advanced/retired cards and played audio normally. At 15:48:59.874 `System.Collections.Generic.KeyNotFoundException` terminated process during `ClassicToastHost.Tick()`, source line 298: `_text[frame.Event.EventId]`. The stack passes through `ClassicToastHost.OnRendering`, WPF `MediaContext.RenderMessageHandlerCore` and `HwndTarget.OnResize`. This is CONFIRMED APP exception and validates the owner-reported half-entrant-card, sound, crash progression; no original Steam behavior is inferred.
@@ -25,10 +25,10 @@ Path history at `src/Rasc.Desktop/ClassicToastHost.cs`:
 - Add real-WPF `classic-reentrant-six-burst` smoke. Six previews are enqueued together, a test-only monotonic clock and hook cause a nested renderer Tick to advance beyond card retirement before the original frame is materialized. **Old implementation crashes with KeyNotFoundException** under this sequence (deduced from exact old source); fixed implementation defers reentry and retires the stack safely. Assert at least one deferral, no cache-miss diagnostic and no residual window. No gameplay or permanent test-only user control.
 
 ## Tests and confidence
-Existing `.github/workflows/windows.yml` Windows xUnit core suite, all real WPF GUI smokes including Classic callback starvation, source/Modern FIFO/bursts, Windows x64 build/upload required at exact head.
+[Windows CI 45041913080](https://github.com/thgillwtnorizoh/rasc/actions/runs/45041913080) **SUCCESS on exact tested head**: 264/264 xUnit core checks (0 failed, 0 skipped); native WPF compile; all Classic/Modern real-window regression scenarios, including PASS `classic-only`, PASS `classic-render-stall`, **PASS `classic-reentrant-six-burst`**, and P006 sealed/immutable wave suites. Windows x64 self-contained artifact built and uploaded. Initial development Actions 45041780285 failed solely because the synthetic smoke clock was incorrectly typed as TimeSpan? instead of Func<TimeSpan>; subsequent edit fixed that harness error, and final run passed. Preserve that historical failure.
 Source analysis and deterministic synthetic test design: RECONSTRUCTED/ENGINEERING; original nested callback trigger only partially established by WPF stack. Acceptance of code mechanism requires actual regression test success. Real user rerun of original CS:GO after fix: NOT RUN.
 Independent Work 1 and original game fullscreen/alt-tab crash repetition: NOT VERIFIED.
 Known limitations: new defensive missing-content branch skips a broken frame, records invariant, no crash. RASC logs have bounded retention. Unrelated instant award source/GC and Classic visual calibration excluded.
 Updated evidence: this checkpoint, PR comments, CI; original failing user log is not copied to repository because it contains local stack/path data.
-Next bounded task / Actor: Work 2 inspect exact-head CI, fix any failures, merge into active P006 branch only when clean; Owner/Work 1 verify live six-burst fullscreen after deploy.
+Next bounded task / Actor: Owner/Work 1 verify live six-burst fullscreen with merged build; inspect newest `%LOCALAPPDATA%\\RASC\\logs\\rasc-*.log` for `classic.reentry`, `classic.invariant`, and any `crash.dispatcher`. Work 2 addresses any reproducible remaining discrepancy.
 Subsystem: OPEN; owner acceptance pending.
