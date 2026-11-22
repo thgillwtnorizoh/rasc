@@ -45,6 +45,7 @@ public sealed class AchievementMonitor : IAsyncDisposable
             };
             // Avoid opening the snapshot repeatedly on unrelated temp-file
             // writes (including the GC writer's atomic replacement staging).
+            _watcher.Filters.Clear(); // remove any implicit wildcard filter
             _watcher.Filters.Add(Path.GetFileName(_source.FilePath));
             _watcher.Filters.Add(Path.GetFileName(_source.JournalPath));
             _watcher.Changed += OnChanged;
