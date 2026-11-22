@@ -40,7 +40,7 @@ public sealed class DiagnosticLog : IDisposable
                 try
                 {
                     _stream = new FileStream(candidate, FileMode.CreateNew,
-                        FileAccess.Write, FileShare.Read, 4096, FileOptions.None);
+                        FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.None);
                     _writer = new StreamWriter(_stream, new UTF8Encoding(false)) { AutoFlush = true };
                     FilePath = candidate;
                     break;
