@@ -785,7 +785,11 @@ internal static class Program
                                 {
                                     Fail("Session diagnostics were not created."); return;
                                 }
-                                var trace = File.ReadAllText(logFile);
+                                using var liveLog = new FileStream(logFile,
+                                    FileMode.Open, FileAccess.Read,
+                                    FileShare.ReadWrite | FileShare.Delete);
+                                using var reader = new StreamReader(liveLog);
+                                var trace = reader.ReadToEnd();
                                 if (!trace.Contains("[classic.queue] accepted;", StringComparison.Ordinal) ||
                                     !trace.Contains("[classic.card] stage=Visible;", StringComparison.Ordinal) ||
                                     !trace.Contains("[classic.window] create;", StringComparison.Ordinal))
