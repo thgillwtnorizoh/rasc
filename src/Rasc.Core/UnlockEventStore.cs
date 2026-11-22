@@ -120,13 +120,18 @@ public sealed class UnlockEventStore : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
         ArgumentNullException.ThrowIfNull(events);
+        if (events.Count == 0) return Array.Empty<UnlockEvent>();
         lock (_sync)
         {
             using var tx = _connection.BeginTransaction();
-            using (var ensureSource = Query(tx,
-                "INSERT OR IGNORE INTO sources(source_key,first_seen_ms) VALUES($src,$now)",
-                ("$src", sourceKey), ("$now", now.ToUnixTimeMilliseconds())))
-                ensureSource.ExecuteNonQuery();
+            // Journal records prove individual unlocks, NOT a complete snapshot.
+            // Do not mark the whole catalog as known/locked by creating a
+            // 'sources' row until achievements.txt has been validated.
+            bool hasSnapshot;
+            using (var lookup = Query(tx,
+                "SELECT 1 FROM sources WHERE source_key=$src LIMIT 1",
+                ("$src", sourceKey)))
+                hasSnapshot = lookup.ExecuteScalar() is not null;
             var discovered = new List<UnlockEvent>();
             foreach (var item in events)
             {
@@ -142,14 +147,17 @@ public sealed class UnlockEventStore : IDisposable
                 // An unsaved live unlock can precede achievements.txt. Reapply
                 // the journal's active awards on EVERY read, even when event
                 // identity is already stored, until the log is truncated.
-                using (var state = Query(tx, """
-                    INSERT INTO achievement_state(source_key,achievement_id,unlock_seconds)
-                    VALUES($src,$id,$stamp)
-                    ON CONFLICT(source_key,achievement_id) DO UPDATE SET
-                      unlock_seconds=excluded.unlock_seconds
-                    """, ("$src", sourceKey), ("$id", item.AchievementId),
-                    ("$stamp", (long)item.UnlockUnixSeconds)))
+                if (hasSnapshot)
+                {
+                    using var state = Query(tx, """
+                        INSERT INTO achievement_state(source_key,achievement_id,unlock_seconds)
+                        VALUES($src,$id,$stamp)
+                        ON CONFLICT(source_key,achievement_id) DO UPDATE SET
+                          unlock_seconds=excluded.unlock_seconds
+                        """, ("$src", sourceKey), ("$id", item.AchievementId),
+                        ("$stamp", (long)item.UnlockUnixSeconds));
                     state.ExecuteNonQuery();
+                }
                 if (isNew) discovered.Add(new UnlockEvent(eventId, sourceKey,
                     item.AchievementId, item.UnlockUnixSeconds, item.ObservedAt));
             }

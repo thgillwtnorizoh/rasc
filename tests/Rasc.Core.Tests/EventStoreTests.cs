@@ -147,4 +147,25 @@ public sealed class EventStoreTests
         Assert.Single(store.GetRecent(Source));
     }
 
+    [Fact]
+    public void JournalOnlyEventsDoNotPretendToProvideACompleteAchievementState()
+    {
+        using var store = new UnlockEventStore(NewDatabase());
+        Assert.Empty(store.AcceptJournal(Source, Array.Empty<GcJournalUnlock>(), Now));
+        Assert.False(store.GetCurrentState(Source).HasValidSnapshot);
+        var journal = new GcJournalUnlock("live", 1, "LIVE_ONLY", 12, Now);
+        Assert.Single(store.AcceptJournal(Source, [journal], Now));
+        Assert.False(store.GetCurrentState(Source).HasValidSnapshot);
+        Assert.Single(store.GetRecent(Source));
+
+        // A delayed first complete snapshot is still a silent baseline,
+        // and the journal entry remains in durable history without replay.
+        Assert.Empty(store.AcceptSnapshot(Source,
+            Snapshot(("LIVE_ONLY", 12), ("PREVIOUS", 4)), Now));
+        Assert.True(store.GetCurrentState(Source).HasValidSnapshot);
+        Assert.Equal(2, store.GetCurrentState(Source).Achievements.Count);
+        Assert.Empty(store.AcceptJournal(Source, [journal], Now));
+        Assert.Single(store.GetRecent(Source));
+    }
+
 }
