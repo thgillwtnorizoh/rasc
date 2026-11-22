@@ -29,9 +29,9 @@ internal static class Program
         if (args.Length == 1 && args[0] == "p006-late-admission")
             return P006LateAdmissionSmoke.Run();
 
-        if (args.Length != 1 || args[0] is not ("classic-only" or "classic-render-stall" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "classic-render-stall" or "classic-reentrant-six-burst" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|classic-render-stall|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|classic-render-stall|classic-reentrant-six-burst|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
             return 2;
         }
         var scenario = args[0];
@@ -482,6 +482,7 @@ internal static class Program
             InstallationRecoveryWindow? recoveryTest = null;
             ModernToastHost? cueTestHost = null;
             ClassicToastHost? stalledClassicHost = null;
+            TimeSpan syntheticClassicTime = TimeSpan.Zero;
             Window? firstWaveWindow = null;
             var cueCount = 0;
             byte[]? rareFirstFrame = null;
@@ -693,6 +694,76 @@ internal static class Program
                             }
                             cueTestHost!.Dispose();
                             cueTestHost = null;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario == "classic-reentrant-six-burst")
+                    {
+                        if (stage == 0)
+                        {
+                            stalledClassicHost = new ClassicToastHost(window.Dispatcher)
+                            {
+                                SuppressCompositionCallbacksForSmoke = true,
+                                TimeOverrideForSmoke = () => syntheticClassicTime
+                            };
+                            stalledClassicHost.SetSettings(
+                                new ClassicPresentationSettings(0, 100));
+                            // Exact reported admission shape: six instantaneous
+                            // Classic awards. Original WPF test only used one.
+                            for (var i = 0; i < 6; i++)
+                                stalledClassicHost.PreviewUnlock();
+
+                            syntheticClassicTime = TimeSpan.FromMilliseconds(100);
+                            var nested = false;
+                            stalledClassicHost.FramesCapturedForSmoke = () =>
+                            {
+                                if (nested) return;
+                                nested = true;
+                                // Reproduce the old crash deterministically:
+                                // the outer frame still references first card,
+                                // while a nested Tick advances long enough to
+                                // retire it and erase its cached content.
+                                syntheticClassicTime = TimeSpan.FromMilliseconds(8500);
+                                stalledClassicHost.AdvanceForSmoke();
+                            };
+                            stalledClassicHost.AdvanceForSmoke();
+                            stalledClassicHost.FramesCapturedForSmoke = null;
+                            if (!nested || stalledClassicHost.TickDeferralsForSmoke < 1)
+                            {
+                                Fail("Reentrant Classic render was not deferred.");
+                                return;
+                            }
+
+                            syntheticClassicTime = TimeSpan.FromSeconds(60);
+                            stalledClassicHost.AdvanceForSmoke();
+                            if (!stalledClassicHost.IsIdle || classicCount() != 0)
+                            {
+                                Fail("Six-achievement burst did not retire cleanly.");
+                                return;
+                            }
+                            // Never accept a silently skipped materialization:
+                            // a missing cache entry should be a hard test fail.
+                            var file = AppLog.CurrentFile;
+                            if (file is null) { Fail("Diagnostic log unavailable."); return; }
+                            using (var stream = new FileStream(file, FileMode.Open,
+                                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                            using (var reader = new StreamReader(stream))
+                            {
+                                var trace = reader.ReadToEnd();
+                                if (!trace.Contains("[classic.reentry] deferred nested Tick;",
+                                        StringComparison.Ordinal)
+                                    || trace.Contains("[classic.invariant] frame lacked cached content;",
+                                        StringComparison.Ordinal))
+                                {
+                                    Fail("Classic six-burst reentry diagnostic invariant violated.");
+                                    return;
+                                }
+                            }
+                            classicObserved = true;
+                            stalledClassicHost.Dispose();
+                            stalledClassicHost = null;
+                            stage++;
                             interval.Stop();
                             app.Shutdown();
                         }
