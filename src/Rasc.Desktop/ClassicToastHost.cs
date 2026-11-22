@@ -21,7 +21,13 @@ internal sealed class ClassicToastHost : IDisposable
     private readonly Dictionary<string, Content> _text = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _holdWake;
     private readonly DispatcherTimer _anchorWake;
+    // CompositionTarget.Rendering can stop while a fullscreen game owns the
+    // foreground desktop. Independently advance 450ms transitions so a card
+    // cannot remain partially below the screen when rendering is throttled.
+    private readonly DispatcherTimer _animationFallback;
     private readonly ClassicAnimationFrameGate _frameGate = new();
+    // Internal WPF smoke seam: simulate no CompositionTarget callbacks.
+    internal bool SuppressCompositionCallbacksForSmoke { get; set; }
     private PopupFontChoice _fontChoice = PopupFontChoice.Original;
     private Action? _playCue;
     private int _fpsCap;
@@ -51,6 +57,11 @@ internal sealed class ClassicToastHost : IDisposable
             Interval = TimeSpan.FromMilliseconds(250)
         };
         _anchorWake.Tick += OnAnchorWake;
+        _animationFallback = new DispatcherTimer(DispatcherPriority.Render, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _animationFallback.Tick += OnAnimationFallback;
     }
 
     internal bool IsIdle => _schedule.IsIdle && _cards.Count == 0 && _window is null;
@@ -113,7 +124,7 @@ internal sealed class ClassicToastHost : IDisposable
 
     private void OnRendering(object? sender, EventArgs args)
     {
-        if (_disposed || !_renderSubscribed) return;
+        if (_disposed || !_renderSubscribed || SuppressCompositionCallbacksForSmoke) return;
         // Rendering may be raised more than once for the same composition time
         // if layout is invalidated during a frame. Avoid counting duplicate
         // callbacks as distinct displayed frames.
@@ -157,6 +168,20 @@ internal sealed class ClassicToastHost : IDisposable
         if (!_disposed) _window?.PositionOnForegroundApp();
     }
 
+    private void OnAnimationFallback(object? sender, EventArgs e)
+    {
+        if (_disposed || !_renderSubscribed) return;
+        var at = _clock.Elapsed;
+        // Normal WPF composition remains the primary clock. The timer only
+        // advances the state after rendering callbacks have gone quiet; it
+        // does not impose an additional 60Hz ceiling on healthy renderers.
+        if (_previousCallbackAt is { } recent &&
+            at - recent < TimeSpan.FromMilliseconds(40)) return;
+        if (!_frameGate.ShouldApply(at, _fpsCap)) return;
+        _appliedAnimationUpdates++;
+        Tick();
+    }
+
     private void OnHoldWake(object? sender, EventArgs e)
     {
         _holdWake.Stop();
@@ -174,10 +199,12 @@ internal sealed class ClassicToastHost : IDisposable
         _animationSegments++;
         CompositionTarget.Rendering += OnRendering;
         _renderSubscribed = true;
+        _animationFallback.Start();
     }
 
     private void StopFrameUpdates()
     {
+        _animationFallback.Stop();
         if (!_renderSubscribed) return;
         CompositionTarget.Rendering -= OnRendering;
         _renderSubscribed = false;
@@ -311,6 +338,8 @@ internal sealed class ClassicToastHost : IDisposable
         _holdWake.Tick -= OnHoldWake;
         _anchorWake.Stop();
         _anchorWake.Tick -= OnAnchorWake;
+        _animationFallback.Stop();
+        _animationFallback.Tick -= OnAnimationFallback;
         _schedule.Clear();
         if (_window is not null)
         {

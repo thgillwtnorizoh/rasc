@@ -29,9 +29,9 @@ internal static class Program
         if (args.Length == 1 && args[0] == "p006-late-admission")
             return P006LateAdmissionSmoke.Run();
 
-        if (args.Length != 1 || args[0] is not ("classic-only" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "classic-render-stall" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|classic-render-stall|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
             return 2;
         }
         var scenario = args[0];
@@ -481,6 +481,7 @@ internal static class Program
             var stage = 0;
             InstallationRecoveryWindow? recoveryTest = null;
             ModernToastHost? cueTestHost = null;
+            ClassicToastHost? stalledClassicHost = null;
             Window? firstWaveWindow = null;
             var cueCount = 0;
             byte[]? rareFirstFrame = null;
@@ -496,6 +497,7 @@ internal static class Program
                 interval.Stop();
                 recoveryTest?.Close();
                 cueTestHost?.Dispose();
+                stalledClassicHost?.Dispose();
                 app.Shutdown();
             }
 
@@ -691,6 +693,69 @@ internal static class Program
                             }
                             cueTestHost!.Dispose();
                             cueTestHost = null;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
+                    else if (scenario == "classic-render-stall")
+                    {
+                        if (stage == 0)
+                        {
+                            // Simulate fullscreen WPF composition starvation.
+                            // This exercises the independent timer without
+                            // artificial/rendered-frame callbacks.
+                            stalledClassicHost = new ClassicToastHost(window.Dispatcher)
+                            {
+                                SuppressCompositionCallbacksForSmoke = true
+                            };
+                            stalledClassicHost.SetSettings(
+                                new ClassicPresentationSettings(0, 100));
+                            stalledClassicHost.PreviewUnlock();
+                            stage++;
+                        }
+                        else if (stage == 1 && elapsed > 950)
+                        {
+                            if (classicCount() != 1 || stalledClassicHost is null)
+                            {
+                                Fail("Rendering-starved Classic toast never appeared.");
+                                return;
+                            }
+                            var hostWindow = app.Windows.Cast<Window>()
+                                .Single(w => w.IsVisible &&
+                                    w.GetType().Name == "ClassicToastStackWindow");
+                            if (hostWindow.Content is not Canvas viewport)
+                            {
+                                Fail("Classic viewport missing."); return;
+                            }
+                            var card = viewport.Children.OfType<ClassicToastCard>().Single();
+                            var top = Canvas.GetTop(card);
+                            if (card.Clip is not RectangleGeometry clip ||
+                                Math.Abs(top - (ClassicToastScheduler.ViewportHeight -
+                                    ClassicToastScheduler.CardHeight)) > 1.5 ||
+                                Math.Abs(clip.Rect.Top) > 1.5 ||
+                                Math.Abs(clip.Rect.Height - ClassicToastScheduler.CardHeight) > 1.5)
+                            {
+                                Fail($"Classic card stuck outside viewport: y={top}, clip={card.Clip}.");
+                                return;
+                            }
+                            if (hostWindow.Top + hostWindow.Height >
+                                SystemParameters.WorkArea.Bottom + 2)
+                            {
+                                Fail("Classic host extends beyond desktop work-area bottom.");
+                                return;
+                            }
+                            classicObserved = true;
+                            stage++;
+                        }
+                        else if (stage == 2 && elapsed > 8100)
+                        {
+                            if (classicCount() != 0 || !stalledClassicHost!.IsIdle)
+                            {
+                                Fail("Rendering-starved Classic toast did not retire.");
+                                return;
+                            }
+                            stalledClassicHost.Dispose();
+                            stalledClassicHost = null;
                             interval.Stop();
                             app.Shutdown();
                         }
