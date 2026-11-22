@@ -48,11 +48,11 @@ internal sealed class ClassicToastHost : IDisposable
     private bool _tickActive;
     private bool _tickQueued;
     private long _tickDeferrals;
-    internal TimeSpan? TimeOverrideForSmoke { get; set; }
+    internal Func<TimeSpan>? TimeOverrideForSmoke { get; set; }
     internal Action? FramesCapturedForSmoke { get; set; }
     internal long TickDeferralsForSmoke => _tickDeferrals;
     internal void AdvanceForSmoke() => Tick();
-    private TimeSpan ClockTime => TimeOverrideForSmoke ?? _clock.Elapsed;
+    private TimeSpan ClockTime => TimeOverrideForSmoke?.Invoke() ?? _clock.Elapsed;
     private ClassicToastStackWindow? _window;
     private bool _renderSubscribed;
     private bool _disposed;
