@@ -29,9 +29,9 @@ internal static class Program
         if (args.Length == 1 && args[0] == "p006-late-admission")
             return P006LateAdmissionSmoke.Run();
 
-        if (args.Length != 1 || args[0] is not ("classic-only" or "classic-render-stall" or "classic-reentrant-six-burst" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
+        if (args.Length != 1 || args[0] is not ("classic-only" or "classic-render-stall" or "classic-reentrant-six-burst" or "classic-transactional-effects" or "modern-classic" or "modern-progress" or "modern-idle-classic" or "modern-stack-two" or "modern-rare" or "font-sound-settings" or "modern-typography" or "modern-queued-sound" or "installation-recovery"))
         {
-            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|classic-render-stall|classic-reentrant-six-burst|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
+            Console.Error.WriteLine("Usage: Rasc.Desktop.Smoke classic-only|classic-render-stall|classic-reentrant-six-burst|classic-transactional-effects|modern-classic|modern-progress|modern-idle-classic|modern-stack-two|modern-rare|font-sound-settings|modern-typography|modern-queued-sound|installation-recovery");
             return 2;
         }
         var scenario = args[0];
@@ -698,6 +698,71 @@ internal static class Program
                             app.Shutdown();
                         }
                     }
+                    else if (scenario == "classic-transactional-effects")
+                    {
+                        if (stage == 0)
+                        {
+                            syntheticClassicTime = TimeSpan.Zero;
+                            var sounds = 0;
+                            stalledClassicHost = new ClassicToastHost(window.Dispatcher)
+                            {
+                                SuppressCompositionCallbacksForSmoke = true,
+                                TimeOverrideForSmoke = () => syntheticClassicTime
+                            };
+                            stalledClassicHost.SetSettings(
+                                new ClassicPresentationSettings(0, 100));
+                            stalledClassicHost.ConfigureCustomization(
+                                PopupFontChoice.Original, () => sounds++);
+                            for (var i = 0; i < 6; i++)
+                                stalledClassicHost.PreviewUnlock();
+
+                            // Full WPF host, not only the scheduler kernel:
+                            // repeatedly update the same frame and traverse all
+                            // six arrivals under a fast synthetic monotonic clock.
+                            for (var step = 0; step <= 500 && !stalledClassicHost.IsIdle; step++)
+                            {
+                                syntheticClassicTime = TimeSpan.FromMilliseconds(step * 250L);
+                                stalledClassicHost.AdvanceForSmoke();
+                                stalledClassicHost.AdvanceForSmoke(); // idempotent effects
+                                var visibleClassicWindows = app.Windows.Cast<Window>()
+                                    .Where(w => w.IsVisible &&
+                                        w.GetType().Name == "ClassicToastStackWindow").ToArray();
+                                if (visibleClassicWindows.Length > 1 ||
+                                    visibleClassicWindows.Any(w => w.Content is Canvas canvas &&
+                                        canvas.Children.OfType<ClassicToastCard>().Count() >
+                                            ClassicToastScheduler.Capacity))
+                                {
+                                    Fail("Classic owner exceeded one HWND or three live visual cards.");
+                                    return;
+                                }
+                            }
+                            if (sounds != 6 || !stalledClassicHost.IsIdle || classicCount() != 0)
+                            {
+                                Fail($"Classic exactly-once admission sound or lifecycle failed: " +
+                                     $"sounds={sounds}, idle={stalledClassicHost.IsIdle}, hwnd={classicCount()}.");
+                                return;
+                            }
+                            var logFile = AppLog.CurrentFile;
+                            if (logFile is null) { Fail("Classic owner log missing."); return; }
+                            using (var stream = new FileStream(logFile, FileMode.Open,
+                                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                            using (var reader = new StreamReader(stream))
+                            {
+                                var trace = reader.ReadToEnd();
+                                if (trace.Contains("[classic.invariant]", StringComparison.Ordinal))
+                                {
+                                    Fail("Classic owner emitted a missing-content invariant.");
+                                    return;
+                                }
+                            }
+                            classicObserved = true;
+                            stalledClassicHost.Dispose();
+                            stalledClassicHost = null;
+                            stage++;
+                            interval.Stop();
+                            app.Shutdown();
+                        }
+                    }
                     else if (scenario == "classic-reentrant-six-burst")
                     {
                         if (stage == 0)
@@ -753,8 +818,7 @@ internal static class Program
                                 var trace = reader.ReadToEnd();
                                 if (!trace.Contains("[classic.reentry] deferred nested Tick;",
                                         StringComparison.Ordinal)
-                                    || trace.Contains("[classic.invariant] frame lacked cached content;",
-                                        StringComparison.Ordinal))
+                                    || trace.Contains("[classic.invariant]", StringComparison.Ordinal))
                                 {
                                     Fail("Classic six-burst reentry diagnostic invariant violated.");
                                     return;

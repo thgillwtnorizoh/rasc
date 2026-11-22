@@ -15,10 +15,10 @@ namespace Rasc.Desktop;
 /// </summary>
 internal sealed class ClassicToastHost : IDisposable
 {
-    private sealed record Content(string Title, string Description, byte[]? IconJpeg);
+    // The scheduler owns lifetime + full content; WPF caches only visual objects.
+    // No separate ID->title/image dictionary can outlive or race a card's exit.
     private readonly ClassicToastScheduler _schedule = new();
     private readonly Dictionary<string, ClassicToastCard> _cards = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Content> _text = new(StringComparer.Ordinal);
     // Never print event IDs or achievement names: stages and geometry are
     // sufficient to diagnose stuck Classic slide/window behavior.
     private readonly Dictionary<string, ClassicToastStage> _loggedStage = new(StringComparer.Ordinal);
@@ -119,9 +119,8 @@ internal sealed class ClassicToastHost : IDisposable
         // Bring the scheduler to NOW before enqueue; idle time must not
         // make a newly received achievement appear to have arrived earlier.
         Tick();
-        if (!_schedule.Enqueue(evt)) return;
+        if (!_schedule.Enqueue(evt, new ClassicToastContent(title, description, jpeg))) return;
         AppLog.Info("classic.queue", $"accepted; waiting={_schedule.WaitingCount}; active={_schedule.ActiveCount}");
-        _text[evt.EventId] = new Content(title, description, jpeg);
         Tick();
     }
 
@@ -247,9 +246,8 @@ internal sealed class ClassicToastHost : IDisposable
         _frameGate.Reset();
     }
 
-    private void SleepUntilNextExpiry()
+    private void SleepUntilNextExpiry(TimeSpan? next)
     {
-        var next = _schedule.NextHoldDeadline;
         if (!next.HasValue) return;
         var remaining = next.Value - ClockTime;
         _holdWake.Interval = TimeSpan.FromMilliseconds(
@@ -301,9 +299,11 @@ internal sealed class ClassicToastHost : IDisposable
     private void TickCore()
     {
         if (_disposed) return;
-        var frames = _schedule.Advance(ClockTime);
-        // Test seam proves stale frame snapshots are never accessed after a
-        // nested WPF callback moves the scheduler and retires card content.
+        // One serialized scheduler transaction produces complete immutable
+        // frames (including metadata), one-shot effects and next wake state.
+        // WPF only materializes this snapshot, never advances the scheduler.
+        var presentation = _schedule.AdvancePresentation(ClockTime);
+        var frames = presentation.Frames;
         FramesCapturedForSmoke?.Invoke();
         _window?.PositionOnForegroundApp();
         var visible = new HashSet<string>(frames.Select(f => f.Event.EventId),
@@ -314,7 +314,6 @@ internal sealed class ClassicToastHost : IDisposable
             _loggedStage.Remove(id);
             _window?.Remove(_cards[id]);
             _cards.Remove(id);
-            _text.Remove(id);
         }
 
         if (frames.Count == 0)
@@ -351,40 +350,49 @@ internal sealed class ClassicToastHost : IDisposable
                 }
                 if (!_cards.TryGetValue(frame.Event.EventId, out var card))
                 {
-                    if (!_text.TryGetValue(frame.Event.EventId, out var content))
+                    if (frame.Content is not { } content)
                     {
-                        // Guard against any future scheduler/content drift as
-                        // well as callback reentrancy. Never terminate the app
-                        // because a stale card ID is no longer in the cache.
+                        // Only old hand-built geometry fixtures can lack content.
+                        // Scheduler-produced frames must always have it.
                         AppLog.Error("classic.invariant",
-                            $"frame lacked cached content; stage={frame.Stage}; " +
+                            $"snapshot lacked content; stage={frame.Stage}; " +
                             $"slot={frame.Slot}; frames={frames.Count}");
                         continue;
                     }
-                    card = new ClassicToastCard(content.Title, content.Description, content.IconJpeg);
+                    card = new ClassicToastCard(content.Title, content.Description,
+                        content.CopyIconJpeg());
                     card.ApplyFontChoice(_fontChoice);
                     _cards.Add(frame.Event.EventId, card);
-                    // Playback begins with the actual visual entrance,
-                    // not while a toast is queued or on every animation frame.
-                    if (frame.Stage == ClassicToastStage.Entering) _playCue?.Invoke();
+                    // Sound is owned by the scheduler's Started transition,
+                    // not by WPF object construction or repeated render frames.
                 }
                 _window.Apply(card, frame);
             }
         }
 
-        if (_schedule.IsIdle)
+        // Exactly once for each genuinely presented admission. A frame may
+        // skip many transitions after a long clock jump; do not play sounds
+        // for toasts that were never rendered.
+        foreach (var effect in presentation.Transitions)
+        {
+            if (effect.Kind == ClassicToastTransitionKind.Started &&
+                _cards.ContainsKey(effect.Event.EventId))
+                _playCue?.Invoke();
+        }
+
+        if (presentation.IsIdle)
         {
             StopFrameUpdates();
             _holdWake.Stop();
         }
-        else if (_schedule.IsAnimating)
+        else if (presentation.IsAnimating)
         {
             StartFrameUpdates();
         }
         else
         {
             StopFrameUpdates();
-            SleepUntilNextExpiry();
+            SleepUntilNextExpiry(presentation.NextHoldDeadline);
         }
     }
 
@@ -448,7 +456,6 @@ internal sealed class ClassicToastHost : IDisposable
             $"appliedUpdates={_appliedAnimationUpdates}; remainingCards={_cards.Count}");
         _cards.Clear();
         _loggedStage.Clear();
-        _text.Clear();
         WriteRenderDiagnostics();
     }
 }
