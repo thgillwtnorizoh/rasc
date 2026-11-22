@@ -34,10 +34,9 @@ public sealed class MonitorTests
         var folder = Path.Combine(Path.GetTempPath(), "rasc-monitor-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "achievements.txt");
-        var db = Path.Combine(folder, "history.db");
         var initial = Snapshot(("A", 1));
         await File.WriteAllTextAsync(path, initial);
-        using var store = new UnlockEventStore(db);
+        using var store = new UnlockEventStore();
         await using var monitor = new AchievementMonitor(new GcFileSource(path), store,
             TimeSpan.FromMilliseconds(75));
         var baselined = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -86,7 +85,7 @@ public sealed class MonitorTests
         var path = Path.Combine(folder, "achievements.txt");
         await File.WriteAllTextAsync(path, Snapshot(("UNSTOPPABLE_FORCE", 0)));
         var source = new GcFileSource(path);
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         await using var monitor = new AchievementMonitor(
             source, store, TimeSpan.FromMilliseconds(60));
 
@@ -141,7 +140,7 @@ public sealed class MonitorTests
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "achievements.txt");
         await File.WriteAllTextAsync(path, Snapshot(("BASELINE", 1)));
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         var source = new GcFileSource(path);
         await using var monitor = new AchievementMonitor(
             source, store, TimeSpan.FromMilliseconds(60));
@@ -191,7 +190,7 @@ public sealed class MonitorTests
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "achievements.txt");
         await File.WriteAllTextAsync(path, Snapshot(("BASELINE", 42)));
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         var source = new GcFileSource(path);
         var monitor = new AchievementMonitor(source, store, TimeSpan.FromMinutes(5));
         var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -219,7 +218,7 @@ public sealed class MonitorTests
         var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
         await File.WriteAllTextAsync(source.FilePath, Snapshot(("ALREADY", 1)));
         await File.WriteAllTextAsync(source.JournalPath, "");
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         await using var monitor = new AchievementMonitor(
             source, store, TimeSpan.FromMilliseconds(40));
 
@@ -273,7 +272,7 @@ public sealed class MonitorTests
         var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
         await File.WriteAllTextAsync(source.FilePath, Snapshot(("A", 1)));
         await File.WriteAllTextAsync(source.JournalPath, "not-json\n");
-        using var store = new UnlockEventStore(Path.Combine(folder, "history.db"));
+        using var store = new UnlockEventStore();
         await using var monitor = new AchievementMonitor(
             source, store, TimeSpan.FromMilliseconds(45));
         var errored = new TaskCompletionSource<bool>(
