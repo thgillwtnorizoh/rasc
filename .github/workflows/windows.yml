@@ -147,6 +147,24 @@ jobs:
             throw "Expected one header and 167 achievement definition records; found $($records.Count)"
           }
           Write-Output "Published editable P006 v0.2 catalog verified: 167 rows."
+      - name: Verify published 167-row progress mapping is fail-closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'artifacts/Rasc-Windows-x64/Data/achievement-progress-mappings.v0.1.csv'
+          if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Published progress mappings missing: $path"
+          }
+          $lines = @(Get-Content -LiteralPath $path | Where-Object {
+            $_.Trim() -and -not $_.TrimStart().StartsWith('#')
+          })
+          if ($lines.Count -ne 168) { throw "Expected header + 167 progress records, found $($lines.Count)" }
+          $records = $lines | Select-Object -Skip 1
+          if (@($records | Where-Object { $_ -notmatch ',NO$' }).Count -ne 0) {
+            throw 'Default progress catalog must ship with all live mappings DISABLED.'
+          }
+          Write-Output 'Published progress catalog: all 167 IDs present, zero live-enabled by default.'
+
 
       - name: Upload Windows application
         uses: actions/upload-artifact@v4

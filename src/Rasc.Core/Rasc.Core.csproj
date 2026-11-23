@@ -13,5 +13,10 @@
     <None Update="Data/achievement-definitions.v0.2.csv"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Data/achievement-progress-mappings.v0.1.csv"
+                      LogicalName="Rasc.Core.Data.achievement-progress-mappings.v0.1.csv" />
+    <None Update="Data/achievement-progress-mappings.v0.1.csv"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

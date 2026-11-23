@@ -139,7 +139,11 @@ public partial class MainWindow : Window
             AppLog.Info("monitor", "start requested; journal preferred; no persisted replay");
             _lastDiagnosticMonitorPhase = null;
             var source = new GcFileSource(PathBox.Text);
+            _presentationGate.BeginProgressSession();
+            _classicToasts.BeginProgressSession();
+            _modernToasts.BeginProgressSession();
             LoadLiveAchievementMetadata(source.FilePath);
+            InitializeLiveProgress(source);
             // A monitoring run is a NEW observation session. Never replay
             // historical notifications or pending SQLite rows on start.
             _store?.Dispose();
@@ -149,6 +153,9 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(_localDirectory);
             File.WriteAllText(Path.Combine(_localDirectory, "last-source.txt"), source.FilePath);
             _monitor = new AchievementMonitor(source, _store);
+            if (_liveProgressMappings?.Entries.Any(x => x.IsLiveEligible) == true)
+                _monitor.StatSnapshotObserved += (_, snapshot) =>
+                    Dispatcher.Invoke(() => OnObservedStatSnapshot(snapshot));
             _monitor.InternalError += (_, error) =>
                 AppLog.Error("monitor.exception", error.ToString());
             _monitor.CurrentStateChanged += (_, state) =>
@@ -164,6 +171,8 @@ public partial class MainWindow : Window
                 {
                 if (_closing || burst.Count == 0) return;
                 var newlyEarned = burst.ToArray();
+                foreach (var evt in newlyEarned)
+                    AcceptEarnedAchievement(evt.AchievementId);
                 foreach (var item in newlyEarned)
                 {
                     _history.Insert(0, new UnlockRow(item.AchievementId,
@@ -607,6 +616,21 @@ public partial class MainWindow : Window
         AppLog.Info("settings", $"profile changed to {profile}");
         if (!_profileStore.TrySave(profile))
             StatusText.Text = "Popup profile changed this session, but could not be saved.";
+    }
+
+    /// <summary>
+    /// One acceptance path shared by original live unlocks and silent earned-state
+    /// baseline refreshes. Never mutate a card that has already been presented.
+    /// </summary>
+    private void AcceptEarnedAchievement(string achievementId)
+    {
+        if (_liveProgressTracker is not null && _progressSourceKey is not null)
+            _liveProgressTracker.AcceptUnlock(_progressSourceKey, achievementId);
+        var droppedAtGate = _presentationGate.AcceptUnlock(achievementId);
+        _classicToasts.MarkEarned(achievementId);
+        _modernToasts.MarkEarned(achievementId);
+        if (droppedAtGate > 0)
+            AppLog.Info("progress.priority", $"discarded shared queued={droppedAtGate}");
     }
 
     private void QueuePresentation(NotificationProfile profile, Action show)

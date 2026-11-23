@@ -7,6 +7,68 @@ namespace Rasc.Desktop;
 public partial class MainWindow
 {
     private CuratedAchievementCatalog? _liveDefinitions;
+    private AchievementProgressCatalog? _liveProgressMappings;
+    private AchievementProgressTracker? _liveProgressTracker;
+    private string? _progressSourceKey;
+
+    private void InitializeLiveProgress(GcFileSource source)
+    {
+        _liveProgressMappings = null;
+        _liveProgressTracker = null;
+        _progressSourceKey = source.SourceKey;
+        try
+        {
+            _liveProgressMappings = AchievementProgressCatalog.LoadDefault();
+            _liveProgressTracker = new AchievementProgressTracker(_liveProgressMappings);
+            var count = _liveProgressMappings.Entries.Count(x => x.IsLiveEligible);
+            AppLog.Info("progress.mapping",
+                $"classification=167; liveEligible={count}; source={_liveProgressMappings.Source}");
+            _liveMetadataStatus +=
+                $" Progress rules: {count}/167 enabled (source-verified only).";
+            ShowLiveAchievementStatus();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            FormatException or InvalidOperationException or ArgumentException)
+        {
+            AppLog.Warning("progress.mapping", "Live progress disabled: " + ex.Message);
+            _liveProgressMappings = null;
+            _liveProgressTracker = null;
+            _liveMetadataStatus += " Progress disabled: invalid mapping catalog.";
+            ShowLiveAchievementStatus();
+        }
+    }
+
+    private void OnObservedStatSnapshot(GcSnapshot snapshot)
+    {
+        if (_closing || _liveProgressTracker is null || _progressSourceKey is null)
+            return;
+        var milestones = _liveProgressTracker.Observe(_progressSourceKey,
+            snapshot, DateTimeOffset.UtcNow);
+        foreach (var progress in milestones)
+        {
+            if (_presentationGate.IsEarned(progress.Event.AchievementId)) continue;
+            var destination = _profile;
+            if (destination is not (NotificationProfile.Classic or NotificationProfile.Modern))
+                continue;
+            var content = ResolveLiveAchievement(progress.Event);
+            var added = _presentationGate.EnqueueProgress(destination,
+                progress.Event.AchievementId, () =>
+                {
+                    if (destination == NotificationProfile.Classic)
+                        _classicToasts.EnqueueProgress(progress.Event, content,
+                            progress.Current, progress.Target);
+                    else
+                        _modernToasts.EnqueueProgress(progress.Event, content,
+                            progress.Current, progress.Target);
+                });
+            if (added)
+                AppLog.Info("progress.milestone",
+                    $"queued={progress.Percent}; profile={destination}");
+        }
+        if (_presentationGate.PendingCount > 0)
+            _presentationWake.Start();
+    }
+
     private CsgoAchievementLocalization? _liveLocalization;
     private string? _liveGameRoot;
     private string _liveMetadataStatus = "Achievement metadata not loaded.";
@@ -158,6 +220,16 @@ public partial class MainWindow
 
     private void OnCommittedLibrarySnapshot(GcCurrentAchievementState state)
     {
+        // Silent pre-existing awards also suppress any future progress milestones.
+        if (state.HasValidSnapshot)
+        {
+            foreach (var id in state.Achievements.Keys)
+            {
+                _liveProgressTracker?.AcceptUnlock(_progressSourceKey!, id);
+                if (!_presentationGate.IsEarned(id))
+                    AcceptEarnedAchievement(id);
+            }
+        }
         // Live earned-state snapshots exist only for the current monitoring
         // session. Restarting RASC never replays an old database ledger.
         if (state.HasValidSnapshot && _libraryWindow is not null)

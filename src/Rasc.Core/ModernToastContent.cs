@@ -27,7 +27,7 @@ public sealed record ModernToastContent(
     /// Current can be below minimum; the source UI clamps the bar to 0%.
     /// The GT-610 persistence source supplies none of these live callbacks.
     /// </summary>
-    public static ModernToastContent Progress(string name, int current, int maximum, int minimum = 0)
+    public static ModernToastContent Progress(string name, int current, int maximum, int minimum = 0, byte[]? iconJpeg = null)
     {
         if (maximum <= 0) throw new ArgumentOutOfRangeException(nameof(maximum));
         if (minimum < 0 || minimum >= maximum)
@@ -35,7 +35,7 @@ public sealed record ModernToastContent(
         if (current < 0 || current > maximum)
             throw new ArgumentOutOfRangeException(nameof(current));
         return new(Nonempty(name), "", ModernToastKind.Progress,
-            current, maximum, false, minimum);
+            current, maximum, false, minimum, iconJpeg);
     }
 
     public double ProgressFraction =>

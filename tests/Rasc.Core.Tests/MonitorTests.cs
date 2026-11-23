@@ -29,6 +29,42 @@ public sealed class MonitorTests
     }
 
     [Fact]
+    public async Task LiveStatSnapshotUpdatesInJournalModeCannotFabricateUnlocks()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "rasc-progress-journal-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var source = new GcFileSource(Path.Combine(folder, "achievements.txt"));
+        static string Stats(int count) =>
+            "\"version\" \"1\"\n\"integer_stats\" {\"total_kills\" \"" +
+            count + "\"}\n\"achievements\" {}\n";
+        await File.WriteAllTextAsync(source.FilePath, Stats(24));
+        await File.WriteAllTextAsync(source.JournalPath, "");
+        using var store = new UnlockEventStore();
+        await using var monitor = new AchievementMonitor(source, store,
+            TimeSpan.FromMilliseconds(45));
+        var initial = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var later = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.StatSnapshotObserved += (_, snapshot) =>
+        {
+            if (snapshot.IntegerStats.GetValueOrDefault("total_kills") == 24)
+                initial.TrySetResult(true);
+            if (snapshot.IntegerStats.GetValueOrDefault("total_kills") == 25)
+                later.TrySetResult(true);
+        };
+        await monitor.StartAsync();
+        await initial.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await File.WriteAllTextAsync(source.FilePath, Stats(25));
+        await later.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(store.GetRecent(source.SourceKey));
+        Assert.Empty(store.GetPending(source.SourceKey));
+        Assert.Empty(store.GetCurrentState(source.SourceKey).Achievements);
+        Assert.Equal(Stats(25), await File.ReadAllTextAsync(source.FilePath));
+    }
+
+    [Fact]
     public async Task AtomicRewriteProducesOneUnlockAndDoesNotAlterGcFile()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rasc-monitor-" + Guid.NewGuid().ToString("N"));

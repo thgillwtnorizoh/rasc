@@ -136,6 +136,36 @@ internal sealed class ModernToastHost : IDisposable
         Tick();
     }
 
+    internal void EnqueueProgress(UnlockEvent evt, ResolvedAchievementToast toast,
+        int current, int goal)
+    {
+        if (!evt.IsProgress)
+            throw new ArgumentException("Progress event kind required.", nameof(evt));
+        Enqueue(evt, ModernToastContent.Progress(toast.Name,
+            current, goal, iconJpeg: toast.IconJpeg));
+    }
+
+    /// <summary>Drop pending progress before it can become an immutable wave.</summary>
+    internal void MarkEarned(string achievementId)
+    {
+        if (_disposed) return;
+        var canceled = _waveQueue.MarkEarned(achievementId);
+        foreach (var id in canceled) _content.Remove(id);
+        if (canceled.Count > 0)
+        {
+            AppLog.Info("modern.progress", $"canceled={canceled.Count}");
+            Tick();
+        }
+    }
+
+    internal void BeginProgressSession()
+    {
+        if (_disposed) return;
+        var canceled = _waveQueue.BeginProgressSession();
+        foreach (var id in canceled) _content.Remove(id);
+        if (canceled.Count > 0) Tick();
+    }
+
     internal void PreviewUnlock() =>
         EnqueuePreview(PreviewEvent(),
             ModernToastContent.Unlock("Champion", "Win 100 games."));
