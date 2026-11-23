@@ -160,15 +160,7 @@ jobs:
           })
           if ($lines.Count -ne 168) { throw "Expected header + 167 progress records, found $($lines.Count)" }
           $records = $lines | Select-Object -Skip 1
-          if (@($records | Where-Object { $_ -notmatch ',NO
-
-      - name: Upload Windows application
-        uses: actions/upload-artifact@v4
-        with:
-          name: Rasc-Windows-x64
-          path: artifacts/Rasc-Windows-x64/
-          if-no-files-found: error
- }).Count -ne 0) {
+          if (@($records | Where-Object { $_ -notmatch ',NO$' }).Count -ne 0) {
             throw 'Default progress catalog must ship with all live mappings DISABLED.'
           }
           Write-Output 'Published progress catalog: all 167 IDs present, zero live-enabled by default.'
