@@ -26,6 +26,8 @@ public sealed class AchievementMonitor : IAsyncDisposable
     public event EventHandler<UnlockEvent>? UnlockDetected;
     public event EventHandler<IReadOnlyList<UnlockEvent>>? UnlockBatchDetected;
     public event EventHandler<GcCurrentAchievementState>? CurrentStateChanged;
+    /// <summary>Optional read-only stat snapshot; does NOT authorize an unlock or claim a GC progress API callback.</summary>
+    public event EventHandler<GcSnapshot>? StatSnapshotObserved;
     public event EventHandler<string>? StatusChanged;
     /// <summary>Full exception for local diagnostics; status UI remains sanitized.</summary>
     public event EventHandler<Exception>? InternalError;
@@ -88,6 +90,7 @@ public sealed class AchievementMonitor : IAsyncDisposable
                 var now = DateTimeOffset.UtcNow;
                 if (journal.Status == ReadStatus.Valid)
                 {
+                    GcSnapshot? acceptedStats = null;
                     var latestStart = journal.MatchStarts.LastOrDefault();
                     var markerIdentity = latestStart is null ? null
                         : latestStart.Session + ":" + latestStart.Sequence;
@@ -101,8 +104,11 @@ public sealed class AchievementMonitor : IAsyncDisposable
                     {
                         var snapshot = await _source.ReadAsync(ct);
                         if (snapshot.Status == ReadStatus.Valid && snapshot.Snapshot is not null)
+                        {
                             _store.AcceptSnapshot(_source.SourceKey, snapshot.Snapshot,
                                 now, recordNewUnlocks: false);
+                            acceptedStats = snapshot.Snapshot;
+                        }
                         else
                             StatusChanged?.Invoke(this, $"Earned-state baseline {snapshot.Status}: {snapshot.Detail}");
                     }
@@ -116,6 +122,20 @@ public sealed class AchievementMonitor : IAsyncDisposable
                     _fallbackActive = false;
                     _firstPass = false;
                     PublishStateAndEvents(ct);
+                    if (StatSnapshotObserved is not null && !ct.IsCancellationRequested)
+                    {
+                        // Journal mode normally reads earned snapshots only at a match boundary.
+                        // Verified stat mappings need new values between those boundaries;
+                        // this separate read NEVER feeds the unlock-delta detector.
+                        if (acceptedStats is null)
+                        {
+                            var statRead = await _source.ReadAsync(ct);
+                            if (statRead.Status == ReadStatus.Valid)
+                                acceptedStats = statRead.Snapshot;
+                        }
+                        if (acceptedStats is not null)
+                            StatSnapshotObserved?.Invoke(this, acceptedStats);
+                    }
                     StatusChanged?.Invoke(this,
                         $"Monitoring achievement_log — {journal.Unlocks.Count} recorded unlock(s).");
                 }
@@ -132,6 +152,8 @@ public sealed class AchievementMonitor : IAsyncDisposable
                         _journalActive = false;
                         _firstPass = false;
                         PublishStateAndEvents(ct);
+                        if (!ct.IsCancellationRequested)
+                            StatSnapshotObserved?.Invoke(this, snapshot.Snapshot);
                         StatusChanged?.Invoke(this,
                             $"Monitoring achievements.txt fallback — {snapshot.Snapshot.Achievements.Count} unlocked.");
                     }

@@ -140,6 +140,7 @@ public partial class MainWindow : Window
             _lastDiagnosticMonitorPhase = null;
             var source = new GcFileSource(PathBox.Text);
             LoadLiveAchievementMetadata(source.FilePath);
+            InitializeLiveProgress(source);
             // A monitoring run is a NEW observation session. Never replay
             // historical notifications or pending SQLite rows on start.
             _store?.Dispose();
@@ -149,6 +150,9 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(_localDirectory);
             File.WriteAllText(Path.Combine(_localDirectory, "last-source.txt"), source.FilePath);
             _monitor = new AchievementMonitor(source, _store);
+            if (_liveProgressMappings?.Entries.Any(x => x.IsLiveEligible) == true)
+                _monitor.StatSnapshotObserved += (_, snapshot) =>
+                    Dispatcher.Invoke(() => OnObservedStatSnapshot(snapshot));
             _monitor.InternalError += (_, error) =>
                 AppLog.Error("monitor.exception", error.ToString());
             _monitor.CurrentStateChanged += (_, state) =>
@@ -617,6 +621,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void AcceptEarnedAchievement(string achievementId)
     {
+        if (_liveProgressTracker is not null && _progressSourceKey is not null)
+            _liveProgressTracker.AcceptUnlock(_progressSourceKey, achievementId);
         var droppedAtGate = _presentationGate.AcceptUnlock(achievementId);
         _classicToasts.MarkEarned(achievementId);
         _modernToasts.MarkEarned(achievementId);
