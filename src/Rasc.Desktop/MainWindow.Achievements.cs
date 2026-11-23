@@ -23,6 +23,9 @@ public partial class MainWindow
             var count = _liveProgressMappings.Entries.Count(x => x.IsLiveEligible);
             AppLog.Info("progress.mapping",
                 $"classification=167; liveEligible={count}; source={_liveProgressMappings.Source}");
+            _liveMetadataStatus +=
+                $" Progress rules: {count}/167 enabled (source-verified only).";
+            ShowLiveAchievementStatus();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
             FormatException or InvalidOperationException or ArgumentException)
@@ -30,6 +33,8 @@ public partial class MainWindow
             AppLog.Warning("progress.mapping", "Live progress disabled: " + ex.Message);
             _liveProgressMappings = null;
             _liveProgressTracker = null;
+            _liveMetadataStatus += " Progress disabled: invalid mapping catalog.";
+            ShowLiveAchievementStatus();
         }
     }
 

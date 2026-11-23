@@ -16,7 +16,7 @@ public sealed class AchievementProgressCatalogTests
             x.Classification == ProgressEligibility.CompositeCandidate));
         Assert.Equal(72, catalog.Entries.Count(x =>
             x.Classification == ProgressEligibility.UnlockOnly));
-        Assert.Empty(catalog.Entries.Where(x => x.IsLiveEligible));
+        Assert.DoesNotContain(catalog.Entries, x => x.IsLiveEligible);
         Assert.Equal("total_kills", catalog.Find("KILL_ENEMY_LOW")!.StatId);
         Assert.Equal("TRACE_ONLY", catalog.Find("KILL_ENEMY_LOW")!.Evidence);
         Assert.False(catalog.Find("KILL_ENEMY_LOW")!.LiveEnabled);
