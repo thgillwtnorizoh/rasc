@@ -97,6 +97,22 @@ public sealed class ModernAchievementWaveQueue
     }
 
     /// <summary>
+    /// New GC source/session: drop old pending progress, but preserve visible
+    /// waves and unrelated queued unlocks. Release historical event identities.
+    /// </summary>
+    public IReadOnlyList<string> BeginProgressSession()
+    {
+        var ids = _groups.SelectMany(g => g.Events)
+            .Where(x => x.IsProgress).Select(x => x.AchievementId)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var removed = ids.SelectMany(MarkEarned).ToArray();
+        _earned.Clear();
+        _seen.Clear();
+        _lastSignalAt = null;
+        return removed;
+    }
+
+    /// <summary>
     /// Dequeue exactly one SEALED FIFO wave after its original collection
     /// deadline, irrespective of how long it has been waiting for a slot.
     /// Never fast-forward, discard or combine it with a later group.

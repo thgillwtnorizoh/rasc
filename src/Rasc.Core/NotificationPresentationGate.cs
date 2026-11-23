@@ -74,6 +74,24 @@ public sealed class NotificationPresentationGate
 
     public bool IsEarned(string achievementId) => _earned.Contains(achievementId);
 
+    /// <summary>
+    /// New source observation session: prevent cross-source earned-state leakage
+    /// and discard only old queued progress. Already displayed cards finish.
+    /// </summary>
+    public int BeginProgressSession()
+    {
+        _earned.Clear();
+        var removed = 0;
+        var count = _pending.Count;
+        for (var i = 0; i < count; i++)
+        {
+            var item = _pending.Dequeue();
+            if (item.IsProgress) removed++;
+            else _pending.Enqueue(item);
+        }
+        return removed;
+    }
+
     public void Pump()
     {
         if (_pumping) return;

@@ -121,6 +121,38 @@ public sealed class ProgressPriorityTests
     }
 
     [Fact]
+    public void NewObservationSessionClearsOldEarnedStateAndOldPendingProgress()
+    {
+        var at = DateTimeOffset.UnixEpoch;
+        var idle = new Dictionary<NotificationProfile, bool>
+        {
+            [NotificationProfile.Modern] = false,
+            [NotificationProfile.Classic] = true
+        };
+        var gate = new NotificationPresentationGate(profile => idle[profile]);
+        gate.Enqueue(NotificationProfile.Modern, () => { });
+        Assert.True(gate.EnqueueProgress(NotificationProfile.Classic, "A", () => { }));
+        gate.AcceptUnlock("B");
+        Assert.Equal(1, gate.BeginProgressSession());
+        Assert.False(gate.IsEarned("B"));
+        Assert.Equal(0, gate.PendingCount);
+
+        var classic = new ClassicToastScheduler();
+        classic.Enqueue(New("first-award", "X", at));
+        classic.Advance(TimeSpan.Zero);
+        classic.Enqueue(New("old-progress", "B", at, true));
+        classic.MarkEarned("A");
+        Assert.Equal(new[] { "old-progress" }, classic.BeginProgressSession());
+        Assert.True(classic.Enqueue(New("new-progress", "A", at, true)));
+
+        var modern = new ModernAchievementWaveQueue();
+        modern.Enqueue(New("old-wave-progress", "A", at, true));
+        modern.MarkEarned("B");
+        Assert.Equal(new[] { "old-wave-progress" }, modern.BeginProgressSession());
+        Assert.True(modern.Enqueue(New("new-wave-progress", "B", at, true)));
+    }
+
+    [Fact]
     public void TakingWaveMakesItPresentedAndNoLongerCancelable()
     {
         var at = DateTimeOffset.UnixEpoch;

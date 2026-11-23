@@ -95,6 +95,17 @@ public sealed class ClassicToastScheduler
         return canceled;
     }
 
+    /// <summary>Start a new GC observation source without replaying old progress.</summary>
+    public IReadOnlyList<string> BeginProgressSession()
+    {
+        var progressIds = _waiting.Where(x => x.Event.IsProgress)
+            .Select(x => x.Event.AchievementId)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var removed = progressIds.SelectMany(MarkEarned).ToArray();
+        _earned.Clear();
+        return removed;
+    }
+
     /// <summary>
     /// Advance simulation to now. Large jumps resolve each completed transition at
     /// its actual deadline before evaluating later transitions. Stable FIFO is preserved.

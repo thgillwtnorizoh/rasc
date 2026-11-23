@@ -139,6 +139,9 @@ public partial class MainWindow : Window
             AppLog.Info("monitor", "start requested; journal preferred; no persisted replay");
             _lastDiagnosticMonitorPhase = null;
             var source = new GcFileSource(PathBox.Text);
+            _presentationGate.BeginProgressSession();
+            _classicToasts.BeginProgressSession();
+            _modernToasts.BeginProgressSession();
             LoadLiveAchievementMetadata(source.FilePath);
             InitializeLiveProgress(source);
             // A monitoring run is a NEW observation session. Never replay

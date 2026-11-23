@@ -158,6 +158,14 @@ internal sealed class ModernToastHost : IDisposable
         }
     }
 
+    internal void BeginProgressSession()
+    {
+        if (_disposed) return;
+        var canceled = _waveQueue.BeginProgressSession();
+        foreach (var id in canceled) _content.Remove(id);
+        if (canceled.Count > 0) Tick();
+    }
+
     internal void PreviewUnlock() =>
         EnqueuePreview(PreviewEvent(),
             ModernToastContent.Unlock("Champion", "Win 100 games."));

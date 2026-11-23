@@ -145,6 +145,13 @@ internal sealed class ClassicToastHost : IDisposable
         }
     }
 
+    internal void BeginProgressSession()
+    {
+        if (_disposed) return;
+        var canceled = _schedule.BeginProgressSession();
+        if (canceled.Count > 0) Tick();
+    }
+
     internal void Preview() => PreviewUnlock();
 
     internal void PreviewUnlock() =>
