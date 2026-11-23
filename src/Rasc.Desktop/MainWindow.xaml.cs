@@ -164,6 +164,8 @@ public partial class MainWindow : Window
                 {
                 if (_closing || burst.Count == 0) return;
                 var newlyEarned = burst.ToArray();
+                foreach (var evt in newlyEarned)
+                    AcceptEarnedAchievement(evt.AchievementId);
                 foreach (var item in newlyEarned)
                 {
                     _history.Insert(0, new UnlockRow(item.AchievementId,
@@ -607,6 +609,19 @@ public partial class MainWindow : Window
         AppLog.Info("settings", $"profile changed to {profile}");
         if (!_profileStore.TrySave(profile))
             StatusText.Text = "Popup profile changed this session, but could not be saved.";
+    }
+
+    /// <summary>
+    /// One acceptance path shared by original live unlocks and silent earned-state
+    /// baseline refreshes. Never mutate a card that has already been presented.
+    /// </summary>
+    private void AcceptEarnedAchievement(string achievementId)
+    {
+        var droppedAtGate = _presentationGate.AcceptUnlock(achievementId);
+        _classicToasts.MarkEarned(achievementId);
+        _modernToasts.MarkEarned(achievementId);
+        if (droppedAtGate > 0)
+            AppLog.Info("progress.priority", $"discarded shared queued={droppedAtGate}");
     }
 
     private void QueuePresentation(NotificationProfile profile, Action show)

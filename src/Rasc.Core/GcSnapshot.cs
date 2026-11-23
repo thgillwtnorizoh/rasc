@@ -6,12 +6,24 @@ public sealed record GcSnapshot(
     IReadOnlyDictionary<string, float> FloatStats,
     IReadOnlyDictionary<string, uint> Achievements);
 
+public enum AchievementNotificationKind { Unlock, Progress }
+
+/// <summary>
+/// The historical UnlockEvent identity remains unchanged. Progress is an explicitly
+/// marked synthetic PRESENTATION event, never an award written to GC or Steam.
+/// </summary>
 public sealed record UnlockEvent(
     string EventId,
     string SourceKey,
     string AchievementId,
     uint UnlockUnixSeconds,
-    DateTimeOffset ObservedAt);
+    DateTimeOffset ObservedAt)
+{
+    public AchievementNotificationKind NotificationKind { get; init; } =
+        AchievementNotificationKind.Unlock;
+    public int MilestonePercent { get; init; }
+    public bool IsProgress => NotificationKind == AchievementNotificationKind.Progress;
+}
 
 public enum ReadStatus { Valid, Missing, Invalid, Unavailable }
 

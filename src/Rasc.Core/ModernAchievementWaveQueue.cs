@@ -25,6 +25,7 @@ public sealed class ModernAchievementWaveQueue
 
     private readonly Queue<OpenGroup> _groups = new();
     private readonly HashSet<string> _seen = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _earned = new(StringComparer.Ordinal);
     private OpenGroup? _tail;
     private DateTimeOffset? _lastSignalAt;
 
@@ -44,6 +45,7 @@ public sealed class ModernAchievementWaveQueue
         ArgumentNullException.ThrowIfNull(award);
         if (string.IsNullOrWhiteSpace(award.EventId))
             throw new ArgumentException("Stable event ID required.", nameof(award));
+        if (award.IsProgress && _earned.Contains(award.AchievementId)) return false;
         if (!_seen.Add(award.EventId)) return false;
 
         // A wall-clock rollback cannot be interpreted as an 800ms coherent
@@ -66,6 +68,35 @@ public sealed class ModernAchievementWaveQueue
     }
 
     /// <summary>
+    /// Remove any same-ID progress not yet handed to the presentation scheduler.
+    /// Keep original wave deadlines and source FIFO for surviving notifications;
+    /// empty waves are dropped and may never block an unrelated next wave.
+    /// Already presented waves live in ModernToastScheduler and are untouched.
+    /// </summary>
+    public IReadOnlyList<string> MarkEarned(string achievementId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(achievementId);
+        _earned.Add(achievementId);
+        var canceled = new List<string>();
+        var groups = _groups.ToArray();
+        _groups.Clear();
+        foreach (var group in groups)
+        {
+            foreach (var item in group.Events.Where(item =>
+                item.IsProgress && string.Equals(item.AchievementId,
+                    achievementId, StringComparison.Ordinal)).ToArray())
+            {
+                group.Events.Remove(item);
+                _seen.Remove(item.EventId);
+                canceled.Add(item.EventId);
+            }
+            if (group.Events.Count > 0) _groups.Enqueue(group);
+        }
+        _tail = _groups.LastOrDefault();
+        return canceled;
+    }
+
+    /// <summary>
     /// Dequeue exactly one SEALED FIFO wave after its original collection
     /// deadline, irrespective of how long it has been waiting for a slot.
     /// Never fast-forward, discard or combine it with a later group.
@@ -85,6 +116,7 @@ public sealed class ModernAchievementWaveQueue
     {
         _groups.Clear();
         _seen.Clear();
+        _earned.Clear();
         _tail = null;
         _lastSignalAt = null;
     }

@@ -34,6 +34,7 @@ public sealed class ClassicToastScheduler
     private readonly List<Card> _settled = []; // newest (bottom) at index 0
     private readonly Queue<Card> _waiting = new();
     private readonly HashSet<string> _tracked = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _earned = new(StringComparer.Ordinal);
     private Motion? _motion;
     private bool _clockStarted;
     private TimeSpan _previous;
@@ -64,9 +65,34 @@ public sealed class ClassicToastScheduler
         ArgumentNullException.ThrowIfNull(content);
         if (string.IsNullOrWhiteSpace(evt.EventId))
             throw new ArgumentException("Notification event must have a stable ID.", nameof(evt));
+        if (evt.IsProgress && _earned.Contains(evt.AchievementId)) return false;
         if (!_tracked.Add(evt.EventId)) return false;
         _waiting.Enqueue(new Card(evt, content));
         return true;
+    }
+
+    /// <summary>
+    /// Cancel ONLY not-yet-admitted progress cards. In-flight entrance/hold/exit
+    /// cards are already presented and retain their full independent lifetime.
+    /// </summary>
+    public IReadOnlyList<string> MarkEarned(string achievementId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(achievementId);
+        _earned.Add(achievementId);
+        var canceled = new List<string>();
+        var count = _waiting.Count;
+        for (var i = 0; i < count; i++)
+        {
+            var card = _waiting.Dequeue();
+            if (card.Event.IsProgress &&
+                string.Equals(card.Event.AchievementId, achievementId, StringComparison.Ordinal))
+            {
+                canceled.Add(card.Event.EventId);
+                _tracked.Remove(card.Event.EventId);
+            }
+            else _waiting.Enqueue(card);
+        }
+        return canceled;
     }
 
     /// <summary>
@@ -214,6 +240,7 @@ public sealed class ClassicToastScheduler
         _waiting.Clear();
         _settled.Clear();
         _tracked.Clear();
+        _earned.Clear();
         _motion = null;
     }
 }

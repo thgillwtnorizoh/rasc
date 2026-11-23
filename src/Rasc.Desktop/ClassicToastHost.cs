@@ -124,6 +124,27 @@ internal sealed class ClassicToastHost : IDisposable
         Tick();
     }
 
+    internal void EnqueueProgress(UnlockEvent evt, ResolvedAchievementToast toast,
+        int current, int goal)
+    {
+        if (!evt.IsProgress)
+            throw new ArgumentException("Progress event kind required.", nameof(evt));
+        Enqueue(evt, "Achievement Progress",
+            $"{toast.Name} ({current:N0}/{goal:N0})", toast.IconJpeg);
+    }
+
+    /// <summary>Source-accepted award cancels waiting, not visible, same-ID progress.</summary>
+    internal void MarkEarned(string achievementId)
+    {
+        if (_disposed) return;
+        var canceled = _schedule.MarkEarned(achievementId);
+        if (canceled.Count > 0)
+        {
+            AppLog.Info("classic.progress", $"canceled={canceled.Count}");
+            Tick();
+        }
+    }
+
     internal void Preview() => PreviewUnlock();
 
     internal void PreviewUnlock() =>
