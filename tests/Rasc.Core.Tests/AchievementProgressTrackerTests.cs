@@ -42,6 +42,8 @@ public sealed class AchievementProgressTrackerTests
         tracker.Observe("src", Sample(5), now);
         Assert.Equal(75, Assert.Single(tracker.Observe("src", Sample(80), now)).Percent);
         Assert.Empty(tracker.Observe("src", Sample(3), now)); // reset
+        Assert.Empty(tracker.Observe("src", Sample(26), now)); // 25 cannot follow 75
+        Assert.Empty(tracker.Observe("src", Sample(50), now)); // 50 cannot follow 75
         Assert.Empty(tracker.Observe("src", Sample(76), now)); // 75 already emitted
     }
 

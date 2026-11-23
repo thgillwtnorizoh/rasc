@@ -46,7 +46,8 @@ For each `(source key, achievement ID)`:
    a subsequent valid counter is evaluated against its own prior reading.
 3. A rising counter before the goal crosses 25%, 50%, or 75%. Crossing
    several in one observation generates only the **highest** milestone.
-4. Already emitted milestones are deduplicated for the process session.
+4. An achievement's highest presented milestone is a monotonic high-water mark:
+   lower or repeated milestones cannot reappear after source reset for the process session.
 5. Value at/above the goal does not generate progress; the normal unlock
    detector controls the unlock card.
 6. Existing earned IDs in a valid snapshot and all newly accepted journal

@@ -14,7 +14,7 @@ public sealed class AchievementProgressTracker
 {
     private readonly AchievementProgressCatalog _catalog;
     private readonly Dictionary<(string Source, string Id), int> _previous = [];
-    private readonly HashSet<(string Source, string Id, int Percent)> _emitted = [];
+    private readonly Dictionary<(string Source, string Id), int> _highestEmitted = [];
     private readonly HashSet<(string Source, string Id)> _earned = [];
 
     public AchievementProgressTracker(AchievementProgressCatalog catalog) =>
@@ -55,8 +55,9 @@ public sealed class AchievementProgressTracker
             var percent = AchievementProgressMilestonePolicy.HighestNewMilestone(
                 old, value, mapping.Target, hasPriorValidCount: true);
             if (percent is not { } milestone ||
-                !_emitted.Add((source, mapping.AchievementId, milestone)))
+                _highestEmitted.GetValueOrDefault(key) >= milestone)
                 continue;
+            _highestEmitted[key] = milestone;
 
             var identity = UnlockEventStore.EventId(
                 source + "\0progress\0" + mapping.AchievementId,
